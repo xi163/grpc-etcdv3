@@ -68,14 +68,6 @@ func (s *Client) get() (cli *Clientv3, err error) {
 	return
 }
 
-func (s *Client) put(cli *Clientv3) {
-	switch s.fixed {
-	case true:
-	default:
-		etcds.Put(cli)
-	}
-}
-
 func (s *Client) Grant(ttl int64) (resp *clientv3.LeaseGrantResponse, e error) {
 	n := 0
 RETRY:
@@ -86,7 +78,7 @@ RETRY:
 		resp, e = cli.Grant(ttl)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -110,7 +102,7 @@ RETRY:
 		resp, e = cli.GrantCtx(ctx, ttl)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -134,7 +126,7 @@ RETRY:
 		ch, e = cli.KeepAlive(id)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -158,7 +150,7 @@ RETRY:
 		ch, e = cli.KeepAliveCtx(ctx, id)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -191,7 +183,7 @@ RETRY:
 		resp, e = cli.Delete(key, opts...)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -215,7 +207,7 @@ RETRY:
 		resp, e = cli.DeleteCtx(ctx, key, opts...)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -239,7 +231,7 @@ RETRY:
 		resp, e = cli.Get(key, opts...)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -263,7 +255,7 @@ RETRY:
 		resp, e = cli.GetCtx(ctx, key, opts...)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -287,7 +279,7 @@ RETRY:
 		resp, e = cli.Put(key, val, opts...)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -311,7 +303,7 @@ RETRY:
 		resp, e = cli.PutCtx(ctx, key, val, opts...)
 		switch e {
 		case nil:
-			s.put(cli)
+			s.close(cli)
 		default:
 			n++
 			switch n <= RETRY_C {
@@ -355,4 +347,29 @@ func (s *Client) WatchCtx(ctx context.Context, key string, opts ...clientv3.OpOp
 	default:
 	}
 	return
+}
+
+func (s *Client) Close() {
+	logs.Errorf("")
+	switch s.fixed {
+	case true:
+		s.l.Lock()
+		switch s.cli {
+		case nil:
+		default:
+			etcds.Put(s.cli)
+			s.cli = nil
+		}
+		s.l.Unlock()
+	default:
+	}
+}
+
+func (s *Client) close(cli *Clientv3) {
+	logs.Errorf("")
+	switch s.fixed {
+	case true:
+	default:
+		etcds.Put(cli)
+	}
 }
