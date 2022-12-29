@@ -44,7 +44,10 @@ func (s *Etcds) update(etcdAddr string, reset func(*Clientv3)) {
 		}
 		s.etcdAddr = etcdAddr
 		s.pool.Update(func(value any, cb func(error, ...any)) (e error) {
+			client := *value.(**Clientv3)
+			client.Cancel()
 			reset(*value.(**Clientv3))
+			client.cli.Close()
 			c, err := s.new(cb)
 			switch err {
 			case nil:
@@ -104,6 +107,8 @@ func (s *Etcds) Put(cli *Clientv3) {
 
 func (s *Etcds) Close(reset func(*Clientv3)) {
 	s.pool.Reset(func(value any) {
+		value.(*Clientv3).Cancel()
 		reset(value.(*Clientv3))
+		value.(*Clientv3).cli.Close()
 	}, false)
 }
