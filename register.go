@@ -63,7 +63,6 @@ func registerEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName strin
 	args := strings.Join([]string{schema, etcdAddr, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, " ")
 	ttl = ttl * 3
 	register.cli.Update(etcdAddr, func(v *Clientv3) {
-		v.Cancel()
 		v.Delete(serviceKey)
 	})
 	resp, err := register.cli.Grant(int64(ttl))

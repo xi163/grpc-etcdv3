@@ -58,7 +58,6 @@ func GetConn(schema, etcdAddr, serviceName string, myAddr string, myPort int) (c
 func GetConns(schema, etcdAddr, serviceName string) (conns []*grpc.ClientConn) {
 	target := TargetString(false, schema, serviceName)
 	cli.Update(etcdAddr, func(v *Clientv3) {
-		v.Cancel()
 		v.Delete(target)
 	})
 	logs.Debugf("%v", target)
