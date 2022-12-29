@@ -65,13 +65,13 @@ func (s *Resolver) GetAdd(unique bool, schema, etcdAddr, serviceName string) (b 
 	b, ok = s.Get(unique, schema, serviceName)
 	switch ok {
 	case true:
-		b.cli.Update(etcdAddr, func(v *Clientv3) {
+		cli.Update(etcdAddr, func(v *Clientv3) {
 		})
 	default:
 		b, ok = s.getAdd(unique, schema, serviceName)
 		switch ok {
 		case true:
-			b.cli.Update(etcdAddr, func(v *Clientv3) {
+			cli.Update(etcdAddr, func(v *Clientv3) {
 			})
 		}
 	}

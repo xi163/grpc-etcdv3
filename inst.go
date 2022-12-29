@@ -3,7 +3,6 @@ package getcdv3
 import (
 	"context"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/cwloo/gonet/logs"
@@ -13,10 +12,10 @@ import (
 )
 
 // GetBalanceConn
-func GetBalanceConn(schema, etcdaddr, serviceName string) (conn *grpc.ClientConn, err error) {
+func GetBalanceConn(schema, etcdAddr, serviceName string) (conn *grpc.ClientConn, err error) {
 	target := TargetString(false, schema, serviceName)
 	logs.Debugf("%v %v:%v", target, "BalanceDial")
-	conn, err = BalanceDial(false, schema, etcdaddr, serviceName)
+	conn, err = BalanceDial(false, schema, etcdAddr, serviceName)
 	switch err {
 	case nil:
 		client := pb_public.NewPeerClient(conn)
@@ -35,7 +34,7 @@ func GetBalanceConn(schema, etcdaddr, serviceName string) (conn *grpc.ClientConn
 }
 
 // GetConn
-func GetConn(schema, etcdaddr, serviceName string, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
+func GetConn(schema, etcdAddr, serviceName string, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
 	conn, ok := rpcConns.GetConnByAddr(myAddr, myPort)
 	switch ok {
 	case true:
@@ -45,7 +44,7 @@ func GetConn(schema, etcdaddr, serviceName string, myAddr string, myPort int) (c
 	default:
 		target := TargetString(false, schema, serviceName)
 		logs.Debugf("%v %v:%v", target, "BalanceDialAddr", net.JoinHostPort(myAddr, myAddr))
-		conn, err = BalanceDialAddr(false, schema, etcdaddr, serviceName, myAddr, myPort)
+		conn, err = BalanceDialAddr(false, schema, etcdAddr, serviceName, myAddr, myPort)
 		switch err {
 		case nil:
 			rpcConns.AddConnByAddr(myAddr, myPort, conn)
@@ -56,16 +55,15 @@ func GetConn(schema, etcdaddr, serviceName string, myAddr string, myPort int) (c
 }
 
 // GetConns
-func GetConns(schema, etcdaddr, serviceName string) (conns []*grpc.ClientConn) {
-	cli, err := clientv3.New(clientv3.Config{Endpoints: strings.Split(etcdaddr, ",")})
-	if err != nil {
-		logs.Errorf(err.Error())
-		return nil
-	}
+func GetConns(schema, etcdAddr, serviceName string) (conns []*grpc.ClientConn) {
 	target := TargetString(false, schema, serviceName)
+	cli.Update(etcdAddr, func(v *Clientv3) {
+		v.Cancel()
+		v.Delete(target)
+	})
 	logs.Debugf("%v", target)
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	resp, err := cli.Get(ctx, target, clientv3.WithPrefix())
+	resp, err := cli.GetCtx(ctx, target, clientv3.WithPrefix())
 	hosts := []string{}
 	switch err {
 	case nil:
@@ -74,11 +72,11 @@ func GetConns(schema, etcdaddr, serviceName string) (conns []*grpc.ClientConn) {
 			hosts = append(hosts, string(resp.Kvs[i].Value))
 		}
 	default:
-		cli.Close()
+		// cli.Close()
 		logs.Errorf(err.Error())
 		return nil
 	}
-	cli.Close()
+	// cli.Close()
 	array := hosts
 	conns, hosts = rpcConns.GetConnsByHost(hosts)
 	switch len(hosts) > 0 {
@@ -88,7 +86,7 @@ func GetConns(schema, etcdaddr, serviceName string) (conns []*grpc.ClientConn) {
 		switch directDial {
 		case true:
 			for _, host := range hosts {
-				r, err := DirectDialHost(schema, etcdaddr, serviceName, host)
+				r, err := DirectDialHost(schema, etcdAddr, serviceName, host)
 				switch err {
 				case nil:
 					conns = append(conns, r)
@@ -117,7 +115,7 @@ func GetConns(schema, etcdaddr, serviceName string) (conns []*grpc.ClientConn) {
 					}
 					target := TargetString(false, schema, serviceName)
 					logs.Debugf("%v %v:%v", target, "BalanceDial")
-					r, _ := BalanceDial(false, schema, etcdaddr, serviceName)
+					r, _ := BalanceDial(false, schema, etcdAddr, serviceName)
 					client := pb_public.NewPeerClient(r)
 					req := &pb_public.PeerReq{}
 					resp, err := client.GetAddr(context.Background(), req)
@@ -138,7 +136,7 @@ func GetConns(schema, etcdaddr, serviceName string) (conns []*grpc.ClientConn) {
 			default:
 				for _, host := range hosts {
 					logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
-					r, _ := BalanceDialHost(false, schema, etcdaddr, serviceName, host)
+					r, _ := BalanceDialHost(false, schema, etcdAddr, serviceName, host)
 					conns = append(conns, r)
 					rpcConns.AddConnByHost(host, r)
 				}
@@ -151,6 +149,6 @@ func GetConns(schema, etcdaddr, serviceName string) (conns []*grpc.ClientConn) {
 }
 
 // schema:///node/ip:port
-// func GetConnHost4Unique(schema, etcdaddr, serviceName, myAddr string) (*grpc.ClientConn, error) {
-// 	return BalanceDial(true, schema, etcdaddr, strings.Join([]string{serviceName, myAddr}, "/"))
+// func GetConnHost4Unique(schema, etcdAddr, serviceName, myAddr string) (*grpc.ClientConn, error) {
+// 	return BalanceDial(true, schema, etcdAddr, strings.Join([]string{serviceName, myAddr}, "/"))
 // }

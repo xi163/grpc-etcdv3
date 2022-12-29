@@ -31,7 +31,6 @@ type ExitStruct struct {
 // Watcher
 // <summary>
 type Watcher struct {
-	b      *Builder
 	target string
 	cc     grpc_resolver.ClientConn
 	hosts  map[string]bool
@@ -42,7 +41,6 @@ type Watcher struct {
 // <summary>
 type Builder struct {
 	grpc_resolver.Builder
-	cli           *Client
 	schema        string
 	target        string
 	watchRevision int64
@@ -54,7 +52,6 @@ type Builder struct {
 func newBuilder(schema string) *Builder {
 	s := &Builder{
 		schema: schema,
-		cli:    newClient(false),
 		flag:   cc.NewAtomFlag(),
 		mq:     lq.NewList(1000),
 	}
@@ -87,7 +84,7 @@ func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.C
 	logs.Errorf("%v", resolver_target)
 	schema, serviceName, unique := ParseTarget(resolver_target)
 	target := TargetString(unique, schema, serviceName)
-	b, ok := resolver.Get(unique, schema, serviceName)
+	_, ok := resolver.Get(unique, schema, serviceName)
 	switch ok {
 	case false:
 		logs.Fatalf("error")
@@ -95,11 +92,10 @@ func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.C
 	s.schema = schema
 	s.target = target
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	resp, err := b.cli.GetCtx(ctx, target, clientv3.WithPrefix())
+	resp, err := cli.GetCtx(ctx, target, clientv3.WithPrefix())
 	switch err {
 	case nil:
 		watcher := &Watcher{
-			b:      b,
 			cc:     cc,
 			target: target,
 			hosts:  map[string]bool{}}
@@ -166,15 +162,7 @@ func (s *Builder) handler(msg any, args ...any) (exit bool) {
 
 func (s *Builder) Watch_handler(msg *Watcher) {
 	logs.Debugf("%+v", msg)
-	switch msg.b {
-	case nil:
-		logs.Fatalf("error")
-	}
-	switch msg.b.cli {
-	case nil:
-		logs.Fatalf("error")
-	}
-	watchChan := msg.b.cli.WatchCtx(context.Background(), msg.target, clientv3.WithPrefix(), clientv3.WithPrefix())
+	watchChan := cli.WatchCtx(context.Background(), msg.target, clientv3.WithPrefix(), clientv3.WithPrefix())
 	for resp := range watchChan {
 		for _, ev := range resp.Events {
 			switch ev.Type {
