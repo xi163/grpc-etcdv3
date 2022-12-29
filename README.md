@@ -5,22 +5,22 @@
 ###### 2. grpc conn pool
 
 
-##### interface 
+#### interface  
 
-###### register etcd
+##### register etcd
 * registerEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName string, ttl int) error
 
 
-###### get grpc conn for random / banlance 
+##### get random grpc conn for banlance 
 
 * GetBalanceConn(schema, etcdaddr, serviceName string) (conn *grpc.ClientConn, err error)
 
 
-###### get grpc conn indicator ip, port
+##### get special grpc conn indicate ip, port
 
 * GetConn(schema, etcdaddr, serviceName string, myAddr string, myPort int) (conn *grpc.ClientConn, err error)
 
 
-###### Get all grpc conns indicator node/serviceName
+##### Get all grpc conns indicate serviceName
 
 * GetConns(schema, etcdaddr, serviceName string) (conns []*grpc.ClientConn)
