@@ -71,11 +71,9 @@ func GetConns(schema, etcdAddr, serviceName string) (conns []*grpc.ClientConn) {
 			hosts = append(hosts, string(resp.Kvs[i].Value))
 		}
 	default:
-		// cli.Close()
 		logs.Errorf(err.Error())
 		return nil
 	}
-	// cli.Close()
 	array := hosts
 	conns, hosts = rpcConns.GetConnsByHost(hosts)
 	switch len(hosts) > 0 {
