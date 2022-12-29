@@ -83,10 +83,15 @@ func (s *Resolver) GetAdd(unique bool, schema, etcdAddr, serviceName string) (b 
 }
 
 func (s *Resolver) getAdd(unique bool, schema, serviceName string) (b *Builder, ok bool) {
-	b = newBuilder(schema)
-	grpc_resolver.Register(b)
 	s.l.Lock()
-	s.m[TargetString(unique, schema, serviceName)] = b
+	b, ok = s.m[TargetString(unique, schema, serviceName)]
+	switch ok {
+	case true:
+	default:
+		b = newBuilder(schema)
+		grpc_resolver.Register(b)
+		s.m[TargetString(unique, schema, serviceName)] = b
+	}
 	s.l.Unlock()
 	ok = true
 	return
