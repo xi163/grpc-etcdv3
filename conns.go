@@ -103,13 +103,23 @@ func (s *ClientConns) existConnByAddr(addr string, port int) (ok bool) {
 	return
 }
 
-func (s *ClientConns) AddConnByAddr(addr string, port int, conn *grpc.ClientConn) {
+func (s *ClientConns) TryAddConnByAddr(addr string, port int, conn *grpc.ClientConn) {
 	switch s.existConnByAddr(addr, port) {
-	case false:
-		s.l.Lock()
-		s.m[net.JoinHostPort(addr, strconv.Itoa(port))] = conn
-		s.l.Unlock()
+	case true:
+	default:
+		s.tryAddConnByAddr(addr, port, conn)
 	}
+}
+
+func (s *ClientConns) tryAddConnByAddr(addr string, port int, conn *grpc.ClientConn) {
+	s.l.Lock()
+	_, ok := s.m[net.JoinHostPort(addr, strconv.Itoa(port))]
+	switch ok {
+	case true:
+	default:
+		s.m[net.JoinHostPort(addr, strconv.Itoa(port))] = conn
+	}
+	s.l.Unlock()
 }
 
 func (s *ClientConns) existConnByHost(host string) (ok bool) {
@@ -119,38 +129,48 @@ func (s *ClientConns) existConnByHost(host string) (ok bool) {
 	return
 }
 
-func (s *ClientConns) AddConnByHost(host string, conn *grpc.ClientConn) {
+func (s *ClientConns) TryAddConnByHost(host string, conn *grpc.ClientConn) {
 	switch s.existConnByHost(host) {
-	case false:
-		s.l.Lock()
-		s.m[host] = conn
-		s.l.Unlock()
+	case true:
+	default:
+		s.tryAddConnByHost(host, conn)
 	}
 }
 
+func (s *ClientConns) tryAddConnByHost(host string, conn *grpc.ClientConn) {
+	s.l.Lock()
+	_, ok := s.m[host]
+	switch ok {
+	case true:
+	default:
+		s.m[host] = conn
+	}
+	s.l.Unlock()
+}
+
 func (s *ClientConns) RemoveConnByAddr(addr string, port int) {
-	logs.Debugf("%v before.size=%v", net.JoinHostPort(addr, strconv.Itoa(port)), s.Len())
+	logs.Debugf("%v begin size=%v", net.JoinHostPort(addr, strconv.Itoa(port)), s.Len())
 	// s.Range(func(host string, _ *grpc.ClientConn) {
 	// 	logs.Warnf("%v", host)
 	// })
 	s.l.Lock()
 	delete(s.m, net.JoinHostPort(addr, strconv.Itoa(port)))
 	s.l.Unlock()
-	logs.Warnf("%v after.size=%v", net.JoinHostPort(addr, strconv.Itoa(port)), s.Len())
+	logs.Warnf("%v end size=%v", net.JoinHostPort(addr, strconv.Itoa(port)), s.Len())
 	// s.Range(func(host string, _ *grpc.ClientConn) {
 	// 	logs.Warnf("%v", host)
 	// })
 }
 
 func (s *ClientConns) RemoveConnByHost(host string) {
-	logs.Debugf("%v before.size=%v", host, s.Len())
+	logs.Debugf("%v begin size=%v", host, s.Len())
 	// s.Range(func(host string, _ *grpc.ClientConn) {
 	// 	logs.Debugf("%v", host)
 	// })
 	s.l.Lock()
 	delete(s.m, host)
 	s.l.Unlock()
-	logs.Warnf("%v after.size=%v", host, s.Len())
+	logs.Warnf("%v end size=%v", host, s.Len())
 	// s.Range(func(host string, _ *grpc.ClientConn) {
 	// 	logs.Warnf("%v", host)
 	// })

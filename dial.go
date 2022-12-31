@@ -37,10 +37,15 @@ func BalanceDialHost(unique bool, schema, etcdAddr, serviceName, myHost string) 
 
 // BalanceDial
 func BalanceDial(unique bool, schema, etcdAddr, serviceName string) (conn *grpc.ClientConn, err error) {
-	_, ok := resolver.GetAdd(unique, schema, etcdAddr, serviceName)
-	logs.Errorf("%v %v", TargetString(unique, schema, serviceName), ok)
+	target := TargetString(unique, schema, serviceName)
+	b, ok := manager.GetAdd(schema)
 	switch ok {
 	case true:
+		_, ok := b.GetAdd(target)
+		switch ok {
+		case true:
+		}
+		logs.Debugf("%v", target)
 		ctx, _ := context.WithTimeout(context.Background(), time.Second*5)
 		opts := []grpc.DialOption{
 			grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, roundrobin.Name)),
@@ -51,7 +56,7 @@ func BalanceDial(unique bool, schema, etcdAddr, serviceName string) (conn *grpc.
 		}
 		// Resolver.Build
 		// conn, err = grpc.Dial(b.target, opts...)
-		conn, err = grpc.DialContext(ctx, TargetString(unique, schema, serviceName), opts...)
+		conn, err = grpc.DialContext(ctx, target, opts...)
 	}
 	return
 }

@@ -44,6 +44,7 @@ func (s *Etcds) update(etcdAddr string, reset func(*Clientv3)) {
 		}
 		s.etcdAddr = etcdAddr
 		s.pool.Update(func(value any, cb func(error, ...any)) (e error) {
+			logs.Fatalf("error")
 			client := *value.(**Clientv3)
 			client.Cancel()
 			reset(*value.(**Clientv3))

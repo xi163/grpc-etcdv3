@@ -3,6 +3,7 @@ package getcdv3
 import (
 	"context"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/cwloo/gonet/logs"
@@ -23,7 +24,7 @@ func GetBalanceConn(schema, etcdAddr, serviceName string) (conn *grpc.ClientConn
 		resp, e := client.GetAddr(context.Background(), req)
 		switch e {
 		case nil:
-			rpcConns.AddConnByHost(resp.Addr, conn)
+			rpcConns.TryAddConnByHost(resp.Addr, conn)
 		default:
 			logs.Errorf(e.Error())
 			return
@@ -34,20 +35,41 @@ func GetBalanceConn(schema, etcdAddr, serviceName string) (conn *grpc.ClientConn
 }
 
 // GetConn
-func GetConn(schema, etcdAddr, serviceName string, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
+func GetConn(schema, etcdAddr, serviceName, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
 	conn, ok := rpcConns.GetConnByAddr(myAddr, myPort)
 	switch ok {
 	case true:
 		target := TargetString(false, schema, serviceName)
-		logs.Debugf("%v %v:%v", target, "GetConnByAddr", net.JoinHostPort(myAddr, myAddr))
+		logs.Debugf("%v %v:%v", target, "GetConnByAddr", net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
 		return conn, nil
 	default:
 		target := TargetString(false, schema, serviceName)
-		logs.Debugf("%v %v:%v", target, "BalanceDialAddr", net.JoinHostPort(myAddr, myAddr))
+		logs.Debugf("%v %v:%v", target, "BalanceDialAddr", net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
 		conn, err = BalanceDialAddr(false, schema, etcdAddr, serviceName, myAddr, myPort)
 		switch err {
 		case nil:
-			rpcConns.AddConnByAddr(myAddr, myPort, conn)
+			rpcConns.TryAddConnByAddr(myAddr, myPort, conn)
+		default:
+		}
+	}
+	return
+}
+
+// GetConn
+func GetConnByHost(schema, etcdAddr, serviceName, myHost string) (conn *grpc.ClientConn, err error) {
+	conn, ok := rpcConns.GetConnByHost(myHost)
+	switch ok {
+	case true:
+		target := TargetString(false, schema, serviceName)
+		logs.Debugf("%v %v:%v", target, "GetConnByAddr", myHost)
+		return conn, nil
+	default:
+		target := TargetString(false, schema, serviceName)
+		logs.Debugf("%v %v:%v", target, "BalanceDialAddr", myHost)
+		conn, err = BalanceDialHost(false, schema, etcdAddr, serviceName, myHost)
+		switch err {
+		case nil:
+			rpcConns.TryAddConnByHost(myHost, conn)
 		default:
 		}
 	}
@@ -62,85 +84,86 @@ func GetConns(schema, etcdAddr, serviceName string) (conns []*grpc.ClientConn) {
 	})
 	logs.Debugf("%v", target)
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	resp, err := cli.GetCtx(ctx, target, clientv3.WithPrefix())
-	hosts := []string{}
-	switch err {
-	case nil:
+	_, err := cli.GetCtx(ctx, target, func(resp *clientv3.GetResponse) {
+		hosts := []string{}
 		for i := range resp.Kvs {
 			// logs.Debugf("%v %v => %v", target, string(resp.Kvs[i].Key), string(resp.Kvs[i].Value))
 			hosts = append(hosts, string(resp.Kvs[i].Value))
 		}
-	default:
-		logs.Errorf(err.Error())
-		return nil
-	}
-	array := hosts
-	conns, hosts = rpcConns.GetConnsByHost(hosts)
-	switch len(hosts) > 0 {
-	case true:
-		// directDial
-		directDial := false
-		switch directDial {
+		array := hosts
+		// conns, hosts = rpcConns.GetConnsByHost(hosts)
+		switch len(hosts) > 0 {
 		case true:
-			for _, host := range hosts {
-				r, err := DirectDialHost(schema, etcdAddr, serviceName, host)
-				switch err {
-				case nil:
-					conns = append(conns, r)
-					rpcConns.AddConnByHost(host, r)
-				default:
-					logs.Errorf(err.Error())
-				}
-			}
-		default:
-			// banlanceDial
-			banlanceDial := false
-			switch banlanceDial {
+			// directDial
+			directDial := false
+			switch directDial {
 			case true:
-				i := 0
-				m := map[string]*grpc.ClientConn{}
-				for {
-					i++
-					switch i >= 20 {
-					case true:
-						for addr, r := range m {
-							logs.Debugf("c=%v %v", i, addr)
-							conns = append(conns, r)
-							rpcConns.AddConnByHost(addr, r)
-						}
-						return
-					}
-					target := TargetString(false, schema, serviceName)
-					logs.Debugf("%v %v:%v", target, "BalanceDial")
-					r, _ := BalanceDial(false, schema, etcdAddr, serviceName)
-					client := pb_public.NewPeerClient(r)
-					req := &pb_public.PeerReq{}
-					resp, err := client.GetAddr(context.Background(), req)
-					if err != nil {
+				for _, host := range hosts {
+					r, err := DirectDialHost(schema, etcdAddr, serviceName, host)
+					switch err {
+					case nil:
+						conns = append(conns, r)
+						rpcConns.TryAddConnByHost(host, r)
+					default:
 						logs.Errorf(err.Error())
-						continue
-					}
-					m[resp.Addr] = r
-					if len(m) == len(hosts) {
-						for addr, r := range m {
-							logs.Debugf("c=%v %v", i, addr)
-							conns = append(conns, r)
-							rpcConns.AddConnByHost(addr, r)
-						}
-						return
 					}
 				}
 			default:
-				for _, host := range hosts {
-					logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
-					r, _ := BalanceDialHost(false, schema, etcdAddr, serviceName, host)
-					conns = append(conns, r)
-					rpcConns.AddConnByHost(host, r)
+				// banlanceDial
+				banlanceDial := false
+				switch banlanceDial {
+				case true:
+					i := 0
+					m := map[string]*grpc.ClientConn{}
+					for {
+						i++
+						switch i >= 20 {
+						case true:
+							for addr, r := range m {
+								logs.Debugf("c=%v %v", i, addr)
+								conns = append(conns, r)
+								rpcConns.TryAddConnByHost(addr, r)
+							}
+							return
+						}
+						target := TargetString(false, schema, serviceName)
+						logs.Debugf("%v %v:%v", target, "BalanceDial")
+						r, _ := BalanceDial(false, schema, etcdAddr, serviceName)
+						client := pb_public.NewPeerClient(r)
+						req := &pb_public.PeerReq{}
+						resp, err := client.GetAddr(context.Background(), req)
+						if err != nil {
+							logs.Errorf(err.Error())
+							continue
+						}
+						m[resp.Addr] = r
+						if len(m) == len(hosts) {
+							for addr, r := range m {
+								logs.Debugf("c=%v %v", i, addr)
+								conns = append(conns, r)
+								rpcConns.TryAddConnByHost(addr, r)
+							}
+							return
+						}
+					}
+				default:
+					for _, host := range hosts {
+						logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
+						r, _ := BalanceDialHost(false, schema, etcdAddr, serviceName, host)
+						conns = append(conns, r)
+						rpcConns.TryAddConnByHost(host, r)
+					}
 				}
 			}
+		default:
+			logs.Debugf("%v %v%v", target, "GetConnsByHost", array)
 		}
+	}, clientv3.WithPrefix())
+	switch err {
+	case nil:
 	default:
-		logs.Debugf("%v %v%v", target, "GetConnsByHost", array)
+		logs.Errorf(err.Error())
+		return nil
 	}
 	return
 }
