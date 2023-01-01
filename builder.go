@@ -21,7 +21,7 @@ import (
 type Builder struct {
 	grpc_resolver.Builder
 	schema string
-	m      map[string]*Watcher
+	m      map[string]Watcher
 	l      *sync.RWMutex
 }
 
@@ -29,7 +29,7 @@ func newBuilder(schema string) *Builder {
 	logs.Tracef("%v", schema)
 	return &Builder{
 		schema: schema,
-		m:      map[string]*Watcher{},
+		m:      map[string]Watcher{},
 		l:      &sync.RWMutex{},
 	}
 }
@@ -41,7 +41,7 @@ func (s *Builder) Len() (c int) {
 	return
 }
 
-func (s *Builder) Range(cb func(string, string, *Watcher)) {
+func (s *Builder) Range(cb func(string, string, Watcher)) {
 	s.l.RLock()
 	for target, w := range s.m {
 		cb(s.schema, target, w)
@@ -49,7 +49,7 @@ func (s *Builder) Range(cb func(string, string, *Watcher)) {
 	s.l.RUnlock()
 }
 
-func (s *Builder) Get(target string) (w *Watcher, ok bool) {
+func (s *Builder) Get(target string) (w Watcher, ok bool) {
 	// logs.Debugf("%v begin size=%v", target, s.Len())
 	s.l.RLock()
 	w, ok = s.m[target]
@@ -58,7 +58,7 @@ func (s *Builder) Get(target string) (w *Watcher, ok bool) {
 	return
 }
 
-func (s *Builder) GetAdd(target string) (w *Watcher, ok bool) {
+func (s *Builder) GetAdd(target string) (w Watcher, ok bool) {
 	w, ok = s.Get(target)
 	switch ok {
 	case true:
@@ -68,7 +68,7 @@ func (s *Builder) GetAdd(target string) (w *Watcher, ok bool) {
 	return
 }
 
-func (s *Builder) getAdd(target string) (w *Watcher, ok bool) {
+func (s *Builder) getAdd(target string) (w Watcher, ok bool) {
 	// logs.Debugf("%v begin size=%v", target, s.Len())
 	s.l.Lock()
 	w, ok = s.m[target]
@@ -95,15 +95,15 @@ func (s *Builder) Remove(target string) {
 	}
 }
 
-func (s *Builder) remove(target string) (c int, w *Watcher, ok bool) {
+func (s *Builder) remove(target string) (c int, w Watcher, ok bool) {
 	s.l.Lock()
 	w, ok = s.m[target]
 	switch ok {
 	case true:
 		logs.Errorf("%v begin size=%v", target, len(s.m))
 		ctx, _ := context.WithCancel(context.Background())
-		// w.cli.Cancel()
-		w.cli.Delete(ctx, target)
+		// w.Cli().Cancel()
+		w.Cli().Delete(ctx, target)
 		w.NotifyClose()
 		delete(s.m, target)
 		logs.Errorf("%v end size=%v", target, len(s.m))
@@ -113,14 +113,14 @@ func (s *Builder) remove(target string) (c int, w *Watcher, ok bool) {
 	return
 }
 
-func (s *Builder) RangeRemove(cb func(string, string, *Watcher)) {
+func (s *Builder) RangeRemove(cb func(string, string, Watcher)) {
 	ctx, _ := context.WithCancel(context.Background())
 	s.l.Lock()
 	for target, w := range s.m {
 		logs.Errorf("%v begin size=%v", target, len(s.m))
 		cb(s.schema, target, w)
-		// w.cli.Cancel()
-		w.cli.Delete(ctx, target)
+		// w.Cli().Cancel()
+		w.Cli().Delete(ctx, target)
 		w.NotifyClose()
 		delete(s.m, target)
 		logs.Errorf("%v end size=%v", target, len(s.m))
@@ -155,7 +155,11 @@ func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.C
 	// logs.Errorf("%v", resolver_target.URL)
 	schema, serviceName, unique := ParseTarget(resolver_target)
 	target := TargetString(unique, schema, serviceName)
-	s.schema = schema
+	switch s.schema == schema {
+	case true:
+	default:
+		logs.Fatalf("error")
+	}
 	watcher, ok := s.Get(target)
 	switch ok {
 	case true:
@@ -163,7 +167,7 @@ func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.C
 		logs.Fatalf("error")
 	}
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	resp, err := watcher.cli.Get(ctx, target, clientv3.WithPrefix())
+	resp, err := watcher.Cli().Get(ctx, target, clientv3.WithPrefix())
 	switch err {
 	case nil:
 		msg := &WatcherMsg{
@@ -182,14 +186,14 @@ func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.C
 			// s.Remove(target)
 		default:
 			cc.UpdateState(grpc_resolver.State{Addresses: addrs})
-			watcher.revision = resp.Header.Revision + 1
+			watcher.Update(resp.Header.Revision + 1)
 			watcher.Watch(msg)
 		}
 	default:
 		logs.Fatalf("%v %v", target, err.Error())
 		return nil, errors.New(logs.SprintErrorf("%v %v", target, err.Error()))
 	}
-	return watcher.r, nil
+	return watcher.Resolver(), nil
 }
 
 // Scheme
@@ -198,7 +202,7 @@ func (s *Builder) Scheme() string {
 }
 
 func (s *Builder) Close() {
-	s.RangeRemove(func(_, _ string, w *Watcher) {
+	s.RangeRemove(func(_, _ string, w Watcher) {
 		w.Close()
 	})
 	s.reset()

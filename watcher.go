@@ -16,10 +16,23 @@ import (
 )
 
 // <summary>
+// Watcher
+// <summary>
+type Watcher interface {
+	Cli() Client
+	Target() string
+	Resolver() *Resolver
+	Update(revision int64)
+	Watch(msg *WatcherMsg)
+	Close()
+	NotifyClose()
+	Put()
+}
+
+// <summary>
 // ExitStruct
 // <summary>
 type ExitStruct struct {
-	schema string
 	target string
 }
 
@@ -27,18 +40,17 @@ type ExitStruct struct {
 // WatcherMsg
 // <summary>
 type WatcherMsg struct {
-	schema string
 	target string
 	cc     grpc_resolver.ClientConn
 	hosts  map[string]bool
 }
 
 // <summary>
-// Watcher
+// Watcher_
 // <summary>
-type Watcher struct {
+type Watcher_ struct {
 	// we can't inherit from grpc_resolver.Resolver, if do so,
-	// grpc_resolver.Resolver.Close() will destroy Watcher, then it will be unpredictable !
+	// grpc_resolver.Resolver.Close() will destroy Watcher_, then it will be unpredictable !
 	r        *Resolver
 	cli      Client
 	revision int64
@@ -54,9 +66,9 @@ type Watcher struct {
 	cc       map[grpc_resolver.ClientConn]bool
 }
 
-func newWatcher(target string, cb func(string)) *Watcher {
+func newWatcher(target string, cb func(string)) Watcher {
 	logs.Tracef("%v", target)
-	s := &Watcher{
+	s := &Watcher_{
 		r:        newResolver(target),
 		cli:      newClient(),
 		cb:       cb,
@@ -72,42 +84,58 @@ func newWatcher(target string, cb func(string)) *Watcher {
 	return s
 }
 
-func (s *Watcher) reset() {
+func (s *Watcher_) Target() string {
+	return s.target
+}
+
+func (s *Watcher_) Cli() Client {
+	return s.cli
+}
+
+func (s *Watcher_) Resolver() *Resolver {
+	return s.r
+}
+
+func (s *Watcher_) reset() {
 	s.cb(s.target)
 	s.mq = nil
 }
 
-func (s *Watcher) Put() {
+func (s *Watcher_) Put() {
 	s.reset()
 }
 
-func (s *Watcher) Close() {
+func (s *Watcher_) Close() {
 	logs.Errorf("%v", s.target)
 	switch s.watched {
 	case false:
 		s.Put()
 	default:
-		s.stopping.Signal()
+		s.stop()
 		s.wait_stop()
 	}
 }
 
-func (s *Watcher) NotifyClose() {
+func (s *Watcher_) NotifyClose() {
 	logs.Errorf("%v", s.target)
 	switch s.watched {
 	case false:
 		s.Put()
 	default:
-		s.stopping.Signal()
+		s.stop()
 	}
 }
 
-func (s *Watcher) onQuit() {
+func (s *Watcher_) onQuit() {
 	logs.Errorf("%v", s.target)
 	s.Put()
 }
 
-func (s *Watcher) Watch(msg *WatcherMsg) {
+func (s *Watcher_) Update(revision int64) {
+	s.revision = revision
+}
+
+func (s *Watcher_) Watch(msg *WatcherMsg) {
 	switch len(msg.hosts) > 0 {
 	case true:
 		s.sched()
@@ -115,7 +143,7 @@ func (s *Watcher) Watch(msg *WatcherMsg) {
 	}
 }
 
-func (s *Watcher) run() {
+func (s *Watcher_) run() {
 	s.l.Lock()
 	s.watched = true
 	s.cond.Signal()
@@ -130,7 +158,7 @@ func (s *Watcher) run() {
 	s.l.Unlock()
 }
 
-func (s *Watcher) running() (exit bool) {
+func (s *Watcher_) running() (exit bool) {
 	i, t := 0, 200
 LOOP:
 	for {
@@ -148,7 +176,7 @@ LOOP:
 	return
 }
 
-func (s *Watcher) handler() (exit bool) {
+func (s *Watcher_) handler() (exit bool) {
 	exit = s.watching()
 	switch exit {
 	case true:
@@ -157,7 +185,7 @@ func (s *Watcher) handler() (exit bool) {
 	return
 }
 
-func (s *Watcher) watching() (exit bool) {
+func (s *Watcher_) watching() (exit bool) {
 	exit = s.watch_handler(s.cli.WatchRelease(
 		context.Background(),
 		s.target,
@@ -167,7 +195,7 @@ func (s *Watcher) watching() (exit bool) {
 	return
 }
 
-func (s *Watcher) Pick() (exit bool) {
+func (s *Watcher_) pick() (exit bool) {
 	v := s.mq.Pick()
 	for _, msg := range v {
 		switch msg := msg.(type) {
@@ -191,11 +219,11 @@ EXIT:
 	return
 }
 
-func (s *Watcher) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
+func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 	select { // block here
 	case resp := <-watchChan:
 		logs.Warnf("begin %v", s.target)
-		EXIT := s.Pick()
+		EXIT := s.pick()
 		for _, ev := range resp.Events {
 			switch ev.Type {
 			case mvccpb.PUT:
@@ -268,7 +296,7 @@ EXIT:
 	return
 }
 
-func (s *Watcher) sched() {
+func (s *Watcher_) sched() {
 	switch s.watched {
 	case true:
 	default:
@@ -284,7 +312,7 @@ func (s *Watcher) sched() {
 	}
 }
 
-func (s *Watcher) wait() {
+func (s *Watcher_) wait() {
 	s.l.Lock()
 	for !s.watched {
 		s.cond.Wait()
@@ -292,7 +320,11 @@ func (s *Watcher) wait() {
 	s.l.Unlock()
 }
 
-func (s *Watcher) wait_stop() {
+func (s *Watcher_) stop() {
+	s.stopping.Signal()
+}
+
+func (s *Watcher_) wait_stop() {
 	s.l.Lock()
 	for s.watched {
 		s.cond.Wait()
