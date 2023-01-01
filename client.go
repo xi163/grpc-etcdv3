@@ -26,6 +26,7 @@ type Client interface {
 	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan)
 	WatchRelease(ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan)
 	Cancel()
+	Free()
 	Close()
 }
 
@@ -87,7 +88,7 @@ func (s *client) GrantRelease(ctx context.Context, ttl int64) (resp *clientv3.Le
 	return s.grant(true, ctx, ttl)
 }
 
-func (s *client) grant(release bool, ctx context.Context, ttl int64) (resp *clientv3.LeaseGrantResponse, e error) {
+func (s *client) grant(free bool, ctx context.Context, ttl int64) (resp *clientv3.LeaseGrantResponse, e error) {
 RETRY:
 	cli, err := s.get_cli()
 	e = err
@@ -97,11 +98,12 @@ RETRY:
 		resp, e = cli.Grant(ctx, ttl)
 		switch e {
 		case nil:
-			switch release {
+			switch free {
 			case true:
-				s.Close()
+				s.Free()
 			}
 		default:
+			s.Close()
 			goto RETRY
 		}
 	default:
@@ -117,7 +119,7 @@ func (s *client) KeepAliveRelease(ctx context.Context, id clientv3.LeaseID) (ch 
 	return s.keepAlive(true, ctx, id)
 }
 
-func (s *client) keepAlive(release bool, ctx context.Context, id clientv3.LeaseID) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error) {
+func (s *client) keepAlive(free bool, ctx context.Context, id clientv3.LeaseID) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error) {
 RETRY:
 	cli, err := s.get_cli()
 	e = err
@@ -127,11 +129,12 @@ RETRY:
 		ch, e = cli.KeepAlive(ctx, id)
 		switch e {
 		case nil:
-			switch release {
+			switch free {
 			case true:
-				s.Close()
+				s.Free()
 			}
 		default:
+			s.Close()
 			goto RETRY
 		}
 	default:
@@ -156,7 +159,7 @@ func (s *client) DeleteRelease(ctx context.Context, key string, opts ...clientv3
 	return s.delete(true, ctx, key, opts...)
 }
 
-func (s *client) delete(release bool, ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error) {
+func (s *client) delete(free bool, ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error) {
 RETRY:
 	cli, err := s.get_cli()
 	e = err
@@ -166,11 +169,12 @@ RETRY:
 		resp, e = cli.Delete(ctx, key, opts...)
 		switch e {
 		case nil:
-			switch release {
+			switch free {
 			case true:
-				s.Close()
+				s.Free()
 			}
 		default:
+			s.Close()
 			goto RETRY
 		}
 	default:
@@ -186,7 +190,7 @@ func (s *client) GetRelease(ctx context.Context, key string, opts ...clientv3.Op
 	return s.get(true, ctx, key, opts...)
 }
 
-func (s *client) get(release bool, ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error) {
+func (s *client) get(free bool, ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error) {
 RETRY:
 	cli, err := s.get_cli()
 	e = err
@@ -196,11 +200,12 @@ RETRY:
 		resp, e = cli.Get(ctx, key, opts...)
 		switch e {
 		case nil:
-			switch release {
+			switch free {
 			case true:
-				s.Close()
+				s.Free()
 			}
 		default:
+			s.Close()
 			goto RETRY
 		}
 	default:
@@ -216,7 +221,7 @@ func (s *client) PutRelease(ctx context.Context, key string, val string, opts ..
 	return s.put(true, ctx, key, val, opts...)
 }
 
-func (s *client) put(release bool, ctx context.Context, key string, val string, opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error) {
+func (s *client) put(free bool, ctx context.Context, key string, val string, opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error) {
 RETRY:
 	cli, err := s.get_cli()
 	e = err
@@ -226,11 +231,12 @@ RETRY:
 		resp, e = cli.Put(ctx, key, val, opts...)
 		switch e {
 		case nil:
-			switch release {
+			switch free {
 			case true:
-				s.Close()
+				s.Free()
 			}
 		default:
+			s.Close()
 			goto RETRY
 		}
 	default:
@@ -246,7 +252,7 @@ func (s *client) WatchRelease(ctx context.Context, key string, opts ...clientv3.
 	return s.watch(true, ctx, key, opts...)
 }
 
-func (s *client) watch(release bool, ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan) {
+func (s *client) watch(free bool, ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan) {
 	logs.Errorf("")
 	cli, err := s.get_cli()
 	switch err {
@@ -257,14 +263,34 @@ func (s *client) watch(release bool, ctx context.Context, key string, opts ...cl
 		default:
 			logs.Errorf("")
 			c = cli.Watch(ctx, key, opts...)
-			switch release {
+			switch free {
 			case true:
-				s.Close()
+				s.Free()
 			}
 		}
 	default:
 	}
 	return
+}
+
+func (s *client) free() {
+	s.l.Lock()
+	switch s.cli {
+	case nil:
+	default:
+		logs.Errorf("")
+		s.cli.Free()
+		s.cli = nil
+	}
+	s.l.Unlock()
+}
+
+func (s *client) Free() {
+	switch s.get_client() {
+	case nil:
+	default:
+		s.free()
+	}
 }
 
 func (s *client) close() {
@@ -273,7 +299,7 @@ func (s *client) close() {
 	case nil:
 	default:
 		logs.Errorf("")
-		s.cli.Free()
+		s.cli.Close()
 		s.cli = nil
 	}
 	s.l.Unlock()
