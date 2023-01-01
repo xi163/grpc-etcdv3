@@ -115,18 +115,11 @@ func (s *RpcConns_) TryAddConnByAddr(addr string, port int, conn *grpc.ClientCon
 }
 
 func (s *RpcConns_) TryAddConn(host string, conn *grpc.ClientConn) {
-	switch s.existConn(host) {
+	switch s.exist(host) {
 	case true:
 	default:
 		s.tryAddConn(host, conn)
 	}
-}
-
-func (s *RpcConns_) existConn(host string) (ok bool) {
-	s.l.RLock()
-	_, ok = s.m[host]
-	s.l.RUnlock()
-	return
 }
 
 func (s *RpcConns_) tryAddConn(host string, conn *grpc.ClientConn) {
