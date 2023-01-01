@@ -102,8 +102,8 @@ func (s *Builder) remove(target string) (c int, w *Watcher, ok bool) {
 	case true:
 		logs.Errorf("%v begin size=%v", target, len(s.m))
 		ctx, _ := context.WithCancel(context.Background())
-		// cli.Cancel()
-		cli.DeleteCtx(ctx, target, func(*clientv3.DeleteResponse) {})
+		// w.cli.Cancel()
+		w.cli.Delete(ctx, target)
 		w.NotifyClose()
 		delete(s.m, target)
 		logs.Errorf("%v end size=%v", target, len(s.m))
@@ -114,13 +114,13 @@ func (s *Builder) remove(target string) (c int, w *Watcher, ok bool) {
 }
 
 func (s *Builder) RangeRemove(cb func(string, string, *Watcher)) {
+	ctx, _ := context.WithCancel(context.Background())
 	s.l.Lock()
 	for target, w := range s.m {
 		logs.Errorf("%v begin size=%v", target, len(s.m))
 		cb(s.schema, target, w)
-		ctx, _ := context.WithCancel(context.Background())
-		// cli.Cancel()
-		cli.DeleteCtx(ctx, target, func(*clientv3.DeleteResponse) {})
+		// w.cli.Cancel()
+		w.cli.Delete(ctx, target)
 		w.NotifyClose()
 		delete(s.m, target)
 		logs.Errorf("%v end size=%v", target, len(s.m))
@@ -163,7 +163,9 @@ func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.C
 		logs.Fatalf("error")
 	}
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	_, err := cli.GetCtx(ctx, target, func(resp *clientv3.GetResponse) {
+	resp, err := watcher.cli.Get(ctx, target, clientv3.WithPrefix())
+	switch err {
+	case nil:
 		msg := &WatcherMsg{
 			cc:     cc,
 			target: target,
@@ -183,9 +185,6 @@ func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.C
 			watcher.revision = resp.Header.Revision + 1
 			watcher.Watch(msg)
 		}
-	}, clientv3.WithPrefix())
-	switch err {
-	case nil:
 	default:
 		logs.Fatalf("%v %v", target, err.Error())
 		return nil, errors.New(logs.SprintErrorf("%v %v", target, err.Error()))
@@ -211,7 +210,5 @@ func (s *Builder) reset() {
 	default:
 		logs.Fatalf("error")
 	}
-	manager.RemoveWith(s.schema, func(_ string, b *Builder) {
-		b.Close()
-	})
+	manager.Remove(s.schema)
 }

@@ -40,6 +40,7 @@ type Watcher struct {
 	// we can't inherit from grpc_resolver.Resolver, if do so,
 	// grpc_resolver.Resolver.Close() will destroy Watcher, then it will be unpredictable !
 	r        *Resolver
+	cli      Client
 	revision int64
 	target   string
 	cb       func(string)
@@ -57,6 +58,7 @@ func newWatcher(target string, cb func(string)) *Watcher {
 	logs.Tracef("%v", target)
 	s := &Watcher{
 		r:        newResolver(target),
+		cli:      newClient(),
 		cb:       cb,
 		target:   target,
 		l:        &sync.Mutex{},
@@ -150,21 +152,22 @@ func (s *Watcher) handler() (exit bool) {
 	exit = s.watching()
 	switch exit {
 	case true:
-		logs.Tracef("--------------------- ****** exit %v ...", s.target)
+		logs.Tracef("--------------------- ****** exit %v", s.target)
 	}
 	return
 }
 
 func (s *Watcher) watching() (exit bool) {
-	logs.Tracef("--------------------- ****** %v", s.target)
-	cli.WatchCtx(context.Background(), s.target, func(watchChan clientv3.WatchChan) {
-		exit = s.watch_handler(watchChan)
-	}, clientv3.WithPrefix(), clientv3.WithPrefix())
-	logs.Warnf("end <WatchCtx> %v", s.target)
+	exit = s.watch_handler(s.cli.WatchRelease(
+		context.Background(),
+		s.target,
+		clientv3.WithPrefix(),
+		clientv3.WithPrefix()))
+	logs.Warnf("end %v", s.target)
 	return
 }
 
-func (s *Watcher) Pick() (exit bool, msgs []*WatcherMsg) {
+func (s *Watcher) Pick() (exit bool) {
 	v := s.mq.Pick()
 	for _, msg := range v {
 		switch msg := msg.(type) {
@@ -172,19 +175,16 @@ func (s *Watcher) Pick() (exit bool, msgs []*WatcherMsg) {
 			logs.Errorf("%v", msg.target)
 			goto EXIT
 		case *WatcherMsg:
-			msgs = append(msgs, msg)
+			switch s.target == msg.target {
+			case true:
+			default:
+				logs.Fatalf("error")
+			}
+			for host := range msg.hosts {
+				s.hosts[host] = true
+			}
+			s.cc[msg.cc] = true
 		}
-	}
-	for _, msg := range msgs {
-		switch s.target == msg.target {
-		case true:
-		default:
-			logs.Fatalf("error")
-		}
-		for host := range msg.hosts {
-			s.hosts[host] = true
-		}
-		s.cc[msg.cc] = true
 	}
 EXIT:
 	exit = true
@@ -192,20 +192,19 @@ EXIT:
 }
 
 func (s *Watcher) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
-	// block here
-	select {
+	select { // block here
 	case resp := <-watchChan:
-		logs.Warnf("begin <WatchCtx> %v", s.target)
-		EXIT, msgs := s.Pick()
+		logs.Warnf("begin %v", s.target)
+		EXIT := s.Pick()
 		for _, ev := range resp.Events {
 			switch ev.Type {
 			case mvccpb.PUT:
 				_, ok := s.hosts[string(ev.Kv.Value)]
 				switch ok {
 				case true:
-					logs.Errorf("<PUT> %v builder:%+v watch:%v %+v", s.target, s.hosts, string(ev.Kv.Value), msgs)
+					logs.Errorf("<PUT> %v builder:%+v watch:%v", s.target, s.hosts, string(ev.Kv.Value))
 				default:
-					logs.Debugf("<PUT> %v builder:%+v watch:%v %+v", s.target, s.hosts, string(ev.Kv.Value), msgs)
+					logs.Debugf("<PUT> %v builder:%+v watch:%v", s.target, s.hosts, string(ev.Kv.Value))
 					hosts := []grpc_resolver.Address{}
 					for host := range s.hosts {
 						hosts = append(hosts, grpc_resolver.Address{Addr: host})
@@ -223,8 +222,8 @@ func (s *Watcher) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 					_, ok := s.hosts[host]
 					switch ok {
 					case true:
-						logs.Debugf("<DELETE> %v %v => %v %+v", s.target, string(ev.Kv.Key), host, msgs)
-						rpcConns.RemoveConnByHost(host)
+						logs.Debugf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
+						rpcConns.RemoveConn(host)
 						delete(s.hosts, host)
 						hosts := []grpc_resolver.Address{}
 						for host := range s.hosts {
@@ -235,8 +234,8 @@ func (s *Watcher) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 						}
 						s.cb(s.target)
 					default:
-						logs.Errorf("<DELETE> %v %v => %v %+v", s.target, string(ev.Kv.Key), host, msgs)
-						rpcConns.RemoveConnByHost(host)
+						logs.Errorf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
+						rpcConns.RemoveConn(host)
 						delete(s.hosts, host)
 						hosts := []grpc_resolver.Address{}
 						for host := range s.hosts {
@@ -249,7 +248,7 @@ func (s *Watcher) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 					}
 				default:
 					host := string(ev.Kv.Key)
-					logs.Errorf("<DELETE> %v %v => %v %+v", s.target, string(ev.Kv.Key), host, msgs)
+					logs.Errorf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
 				}
 			default:
 			}
@@ -270,11 +269,18 @@ EXIT:
 }
 
 func (s *Watcher) sched() {
-	if !s.watched && s.flag.TestSet() {
-		s.mq = lq.NewList(1000)
-		go s.run()
-		s.wait()
-		s.flag.Reset()
+	switch s.watched {
+	case true:
+	default:
+		switch s.flag.TestSet() {
+		case true:
+			logs.Tracef("--------------------- ****** %v", s.target)
+			s.mq = lq.NewList(1000)
+			go s.run()
+			s.wait()
+			s.flag.Reset()
+		default:
+		}
 	}
 }
 

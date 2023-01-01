@@ -17,12 +17,12 @@ import (
 // Register
 // <summary>
 type Register struct {
-	cli *Client
+	cli Client
 }
 
 var (
 	register = Register{
-		cli: newClient(true),
+		cli: newClient(),
 	}
 )
 
@@ -62,20 +62,28 @@ func registerEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName strin
 	serviceKey := GetPrefix(schema, serviceName) + serviceValue
 	args := strings.Join([]string{schema, etcdAddr, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, " ")
 	ttl = ttl * 3
-	register.cli.Update(etcdAddr, func(v *Clientv3) {
-		v.Delete(serviceKey)
+	ctx, _ := context.WithCancel(context.Background())
+	etcds.Update(etcdAddr, func(v Clientv3) {
+		v.Delete(ctx, serviceKey)
 	})
-	_, err := register.cli.Grant(int64(ttl), func(gresp *clientv3.LeaseGrantResponse) {
-		_, err := register.cli.Put(serviceKey, serviceValue, func(presp *clientv3.PutResponse) {
-			_, err := register.cli.KeepAlive(gresp.ID, func(kresp <-chan *clientv3.LeaseKeepAliveResponse) {
+	gresp, err := register.cli.Grant(ctx, int64(ttl))
+	switch err {
+	case nil:
+		_, err := register.cli.Put(ctx, serviceKey, serviceValue, clientv3.WithLease(gresp.ID))
+		switch err {
+		case nil:
+			kresp, err := register.cli.KeepAlive(ctx, gresp.ID)
+			switch err {
+			case nil:
 				// logs.Infof("RegisterEtcd ok %v", args)
 				go func() {
 					for {
 						select {
 						case pv, ok := <-kresp:
-							if ok {
+							switch ok {
+							case true:
 								// logs.Debugf("KeepAlive ok %v %v", pv, args)
-							} else {
+							default:
 								logs.Errorf("KeepAlive failed %v %v", pv, args)
 								t := time.NewTicker(time.Duration(ttl/2) * time.Second)
 								for {
@@ -83,17 +91,15 @@ func registerEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName strin
 									case <-t.C:
 									}
 									ctx, _ := context.WithCancel(context.Background())
-									_, err := register.cli.GrantCtx(ctx, int64(ttl), func(gresp *clientv3.LeaseGrantResponse) {
-										_, err := register.cli.Put(serviceKey, serviceValue, func(presp *clientv3.PutResponse) {
-										}, clientv3.WithLease(gresp.ID))
+									gresp, err := register.cli.Grant(ctx, int64(ttl))
+									switch err {
+									case nil:
+										_, err := register.cli.PutRelease(ctx, serviceKey, serviceValue, clientv3.WithLease(gresp.ID))
 										switch err {
 										case nil:
 										default:
 											logs.Errorf("%v %v %v", err.Error(), args, gresp.ID)
 										}
-									})
-									switch err {
-									case nil:
 									default:
 										logs.Errorf("%v %v", err.Error(), args)
 									}
@@ -102,21 +108,12 @@ func registerEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName strin
 						}
 					}
 				}()
-			})
-			switch err {
-			case nil:
 			default:
 				logs.Errorf("KeepAlive %v %v %v", err.Error(), args, gresp.ID)
 			}
-		}, clientv3.WithLease(gresp.ID))
-		switch err {
-		case nil:
 		default:
 			logs.Errorf("%v %v %v", err.Error(), args, gresp.ID)
 		}
-	})
-	switch err {
-	case nil:
 	default:
 		logs.Errorf("%v %v", err.Error(), ttl)
 		return errors.New(logs.SprintErrorf(err.Error()))

@@ -8,36 +8,48 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-var (
-	cli = newClient(false)
-)
-
 // <summary>
 // Client
 // <summary>
-type Client struct {
-	fixed bool
-	cli   *Clientv3
-	l     *sync.RWMutex
+type Client interface {
+	Cli() (Clientv3, error)
+	Grant(ctx context.Context, ttl int64) (resp *clientv3.LeaseGrantResponse, e error)
+	GrantRelease(ctx context.Context, ttl int64) (resp *clientv3.LeaseGrantResponse, e error)
+	KeepAlive(ctx context.Context, id clientv3.LeaseID) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error)
+	KeepAliveRelease(ctx context.Context, id clientv3.LeaseID) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error)
+	Delete(ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error)
+	DeleteRelease(ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error)
+	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error)
+	GetRelease(ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error)
+	Put(ctx context.Context, key string, val string, opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error)
+	PutRelease(ctx context.Context, key string, val string, opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error)
+	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan)
+	WatchRelease(ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan)
+	Cancel()
+	Close()
 }
 
-func newClient(fixed bool) *Client {
-	s := &Client{fixed: fixed, l: &sync.RWMutex{}}
+// <summary>
+// client
+// <summary>
+type client struct {
+	cli Clientv3
+	l   *sync.RWMutex
+}
+
+func newClient() Client {
+	s := &client{l: &sync.RWMutex{}}
 	return s
 }
 
-func (s *Client) Update(etcdAddr string, reset func(*Clientv3)) {
-	etcds.update(etcdAddr, reset)
-}
-
-func (s *Client) get_client() (cli *Clientv3) {
+func (s *client) get_client() (cli Clientv3) {
 	s.l.RLock()
 	cli = s.cli
 	s.l.RUnlock()
 	return
 }
 
-func (s *Client) new_client() (cli *Clientv3, err error) {
+func (s *client) new_client() (cli Clientv3, err error) {
 	s.l.Lock()
 	switch s.cli {
 	case nil:
@@ -53,342 +65,231 @@ func (s *Client) new_client() (cli *Clientv3, err error) {
 	return
 }
 
-func (s *Client) get() (cli *Clientv3, err error) {
-	switch s.fixed {
-	case true:
-		cli = s.get_client()
-		switch cli {
-		case nil:
-			cli, err = s.new_client()
-		default:
-		}
+func (s *client) get_cli() (cli Clientv3, err error) {
+	cli = s.get_client()
+	switch cli {
+	case nil:
+		cli, err = s.new_client()
 	default:
-		cli, err = etcds.Get()
 	}
 	return
 }
 
-func (s *Client) Cli() (*Clientv3, error) {
-	return s.get()
+func (s *client) Cli() (Clientv3, error) {
+	return s.get_cli()
 }
 
-func (s *Client) Grant(ttl int64, cb func(*clientv3.LeaseGrantResponse)) (resp *clientv3.LeaseGrantResponse, e error) {
-	n := 0
+func (s *client) Grant(ctx context.Context, ttl int64) (resp *clientv3.LeaseGrantResponse, e error) {
+	return s.grant(false, ctx, ttl)
+}
+
+func (s *client) GrantRelease(ctx context.Context, ttl int64) (resp *clientv3.LeaseGrantResponse, e error) {
+	return s.grant(true, ctx, ttl)
+}
+
+func (s *client) grant(release bool, ctx context.Context, ttl int64) (resp *clientv3.LeaseGrantResponse, e error) {
 RETRY:
-	cli, err := s.get()
+	cli, err := s.get_cli()
 	e = err
 	switch err {
 	case nil:
-		resp, e = cli.Grant(ttl)
-		switch e {
-		case nil:
-			cb(resp)
-			s.close("Grant", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
-			case true:
-				goto RETRY
-			default:
-			}
-		}
-	default:
-	}
-	return
-}
-
-func (s *Client) GrantCtx(ctx context.Context, ttl int64, cb func(*clientv3.LeaseGrantResponse)) (resp *clientv3.LeaseGrantResponse, e error) {
-	n := 0
-RETRY:
-	cli, err := s.get()
-	e = err
-	switch err {
-	case nil:
-		resp, e = cli.GrantCtx(ctx, ttl)
-		switch e {
-		case nil:
-			cb(resp)
-			s.close("GrantCtx", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
-			case true:
-				goto RETRY
-			default:
-			}
-		}
-	default:
-	}
-	return
-}
-
-func (s *Client) KeepAlive(id clientv3.LeaseID, cb func(<-chan *clientv3.LeaseKeepAliveResponse)) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error) {
-	n := 0
-RETRY:
-	cli, err := s.get()
-	e = err
-	switch err {
-	case nil:
-		ch, e = cli.KeepAlive(id)
-		switch e {
-		case nil:
-			cb(ch)
-			s.close("KeepAlive", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
-			case true:
-				goto RETRY
-			default:
-			}
-		}
-	default:
-	}
-	return
-}
-
-func (s *Client) KeepAliveCtx(ctx context.Context, id clientv3.LeaseID, cb func(<-chan *clientv3.LeaseKeepAliveResponse)) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error) {
-	n := 0
-RETRY:
-	cli, err := s.get()
-	e = err
-	switch err {
-	case nil:
-		ch, e = cli.KeepAliveCtx(ctx, id)
-		switch e {
-		case nil:
-			cb(ch)
-			s.close("KeepAliveCtx", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
-			case true:
-				goto RETRY
-			default:
-			}
-		}
-	default:
-	}
-	return
-}
-
-func (s *Client) Cancel() {
-	switch s.fixed {
-	case true:
 		logs.Errorf("")
-		s.l.Lock()
-		s.cli.cancel()
-		s.l.Unlock()
-	}
-}
-
-func (s *Client) Delete(key string, cb func(*clientv3.DeleteResponse), opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error) {
-	n := 0
-RETRY:
-	cli, err := s.get()
-	e = err
-	switch err {
-	case nil:
-		resp, e = cli.Delete(key, opts...)
+		resp, e = cli.Grant(ctx, ttl)
 		switch e {
 		case nil:
-			cb(resp)
-			s.close("Delete", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
+			switch release {
 			case true:
-				goto RETRY
-			default:
+				s.Close()
 			}
+		default:
+			goto RETRY
 		}
 	default:
 	}
 	return
 }
 
-func (s *Client) DeleteCtx(ctx context.Context, key string, cb func(*clientv3.DeleteResponse), opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error) {
-	n := 0
+func (s *client) KeepAlive(ctx context.Context, id clientv3.LeaseID) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error) {
+	return s.keepAlive(false, ctx, id)
+}
+
+func (s *client) KeepAliveRelease(ctx context.Context, id clientv3.LeaseID) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error) {
+	return s.keepAlive(true, ctx, id)
+}
+
+func (s *client) keepAlive(release bool, ctx context.Context, id clientv3.LeaseID) (ch <-chan *clientv3.LeaseKeepAliveResponse, e error) {
 RETRY:
-	cli, err := s.get()
+	cli, err := s.get_cli()
 	e = err
 	switch err {
 	case nil:
-		resp, e = cli.DeleteCtx(ctx, key, opts...)
+		logs.Errorf("")
+		ch, e = cli.KeepAlive(ctx, id)
 		switch e {
 		case nil:
-			cb(resp)
-			s.close("DeleteCtx", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
+			switch release {
 			case true:
-				goto RETRY
-			default:
+				s.Close()
 			}
+		default:
+			goto RETRY
 		}
 	default:
 	}
 	return
 }
 
-func (s *Client) Get(key string, cb func(*clientv3.GetResponse), opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error) {
-	n := 0
+func (s *client) Cancel() {
+	cli, err := s.get_cli()
+	switch err {
+	case nil:
+		logs.Errorf("")
+		cli.Cancel()
+	}
+}
+
+func (s *client) Delete(ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error) {
+	return s.delete(false, ctx, key, opts...)
+}
+
+func (s *client) DeleteRelease(ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error) {
+	return s.delete(true, ctx, key, opts...)
+}
+
+func (s *client) delete(release bool, ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.DeleteResponse, e error) {
 RETRY:
-	cli, err := s.get()
+	cli, err := s.get_cli()
 	e = err
 	switch err {
 	case nil:
-		resp, e = cli.Get(key, opts...)
+		logs.Errorf("")
+		resp, e = cli.Delete(ctx, key, opts...)
 		switch e {
 		case nil:
-			cb(resp)
-			s.close("Get", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
+			switch release {
 			case true:
-				goto RETRY
-			default:
+				s.Close()
 			}
+		default:
+			goto RETRY
 		}
 	default:
 	}
 	return
 }
 
-func (s *Client) GetCtx(ctx context.Context, key string, cb func(*clientv3.GetResponse), opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error) {
-	n := 0
+func (s *client) Get(ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error) {
+	return s.get(false, ctx, key, opts...)
+}
+
+func (s *client) GetRelease(ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error) {
+	return s.get(true, ctx, key, opts...)
+}
+
+func (s *client) get(release bool, ctx context.Context, key string, opts ...clientv3.OpOption) (resp *clientv3.GetResponse, e error) {
 RETRY:
-	cli, err := s.get()
+	cli, err := s.get_cli()
 	e = err
 	switch err {
 	case nil:
-		resp, e = cli.GetCtx(ctx, key, opts...)
+		logs.Errorf("")
+		resp, e = cli.Get(ctx, key, opts...)
 		switch e {
 		case nil:
-			cb(resp)
-			s.close("GetCtx", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
+			switch release {
 			case true:
-				goto RETRY
-			default:
+				s.Close()
 			}
+		default:
+			goto RETRY
 		}
 	default:
 	}
 	return
 }
 
-func (s *Client) Put(key string, val string, cb func(*clientv3.PutResponse), opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error) {
-	n := 0
+func (s *client) Put(ctx context.Context, key string, val string, opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error) {
+	return s.put(false, ctx, key, val, opts...)
+}
+
+func (s *client) PutRelease(ctx context.Context, key string, val string, opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error) {
+	return s.put(true, ctx, key, val, opts...)
+}
+
+func (s *client) put(release bool, ctx context.Context, key string, val string, opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error) {
 RETRY:
-	cli, err := s.get()
+	cli, err := s.get_cli()
 	e = err
 	switch err {
 	case nil:
-		resp, e = cli.Put(key, val, opts...)
+		logs.Errorf("")
+		resp, e = cli.Put(ctx, key, val, opts...)
 		switch e {
 		case nil:
-			cb(resp)
-			s.close("Put", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
+			switch release {
 			case true:
-				goto RETRY
-			default:
+				s.Close()
 			}
+		default:
+			goto RETRY
 		}
 	default:
 	}
 	return
 }
 
-func (s *Client) PutCtx(ctx context.Context, key string, val string, cb func(*clientv3.PutResponse), opts ...clientv3.OpOption) (resp *clientv3.PutResponse, e error) {
-	n := 0
-RETRY:
-	cli, err := s.get()
-	e = err
-	switch err {
-	case nil:
-		resp, e = cli.PutCtx(ctx, key, val, opts...)
-		switch e {
-		case nil:
-			cb(resp)
-			s.close("PutCtx", cli)
-		default:
-			n++
-			switch n <= RETRY_C {
-			case true:
-				goto RETRY
-			default:
-			}
-		}
-	default:
-	}
-	return
+func (s *client) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan) {
+	return s.watch(false, ctx, key, opts...)
 }
 
-func (s *Client) Watch(key string, cb func(clientv3.WatchChan), opts ...clientv3.OpOption) (c clientv3.WatchChan) {
+func (s *client) WatchRelease(ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan) {
+	return s.watch(true, ctx, key, opts...)
+}
+
+func (s *client) watch(release bool, ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan) {
 	logs.Errorf("")
-	cli, err := s.get()
+	cli, err := s.get_cli()
 	switch err {
 	case nil:
 		switch cli {
 		case nil:
 			logs.Fatalf("error")
-		default:
-			c = cli.Watch(key, opts...)
-			cb(c)
-			s.close("Watch", cli)
-		}
-	default:
-	}
-	return
-}
-
-func (s *Client) WatchCtx(ctx context.Context, key string, cb func(clientv3.WatchChan), opts ...clientv3.OpOption) (c clientv3.WatchChan) {
-	logs.Errorf("")
-	cli, err := s.get()
-	switch err {
-	case nil:
-		switch cli {
-		case nil:
-			logs.Fatalf("error")
-		default:
-			c = cli.WatchCtx(ctx, key, opts...)
-			cb(c)
-			s.close("WatchCtx", cli)
-		}
-	default:
-	}
-	return
-}
-
-func (s *Client) close(name string, cli *Clientv3) {
-	switch s.fixed {
-	case true:
-	default:
-		logs.Errorf("<%v>", name)
-		etcds.Put(cli)
-	}
-}
-
-func (s *Client) Close() {
-	switch s.fixed {
-	case true:
-		s.l.Lock()
-		switch s.cli {
-		case nil:
 		default:
 			logs.Errorf("")
-			etcds.Put(s.cli)
-			s.cli = nil
+			c = cli.Watch(ctx, key, opts...)
+			switch release {
+			case true:
+				s.Close()
+			}
 		}
-		s.l.Unlock()
 	default:
+	}
+	return
+}
+
+func (s *client) closed() (ok bool) {
+	s.l.RLock()
+	ok = s.cli == nil
+	s.l.RUnlock()
+	return
+}
+
+func (s *client) close() {
+	s.l.Lock()
+	switch s.cli {
+	case nil:
+	default:
+		logs.Errorf("")
+		s.cli.Free()
+		s.cli = nil
+	}
+	s.l.Unlock()
+}
+
+func (s *client) Close() {
+	switch s.closed() {
+	case true:
+	default:
+		s.close()
 	}
 }

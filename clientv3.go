@@ -3,74 +3,103 @@ package getcdv3
 import (
 	"context"
 
+	"github.com/cwloo/gonet/logs"
 	clientv3 "go.etcd.io/etcd/client/v3"
-)
-
-const (
-	RETRY_C = 2
 )
 
 // <summary>
 // Clientv3
 // <summary>
-type Clientv3 struct {
+type Clientv3 interface {
+	Ctx() context.Context
+	Grant(ctx context.Context, ttl int64) (*clientv3.LeaseGrantResponse, error)
+	KeepAlive(ctx context.Context, id clientv3.LeaseID) (<-chan *clientv3.LeaseKeepAliveResponse, error)
+	Delete(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.DeleteResponse, error)
+	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error)
+	Put(ctx context.Context, key string, val string, opts ...clientv3.OpOption) (*clientv3.PutResponse, error)
+	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan
+	Cancel()
+	Free()
+	Close()
+}
+
+// <summary>
+// clientv3_
+// <summary>
+type clientv3_ struct {
 	cli    *clientv3.Client
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-func (s *Clientv3) Grant(ttl int64) (*clientv3.LeaseGrantResponse, error) {
-	return s.cli.Grant(s.ctx, ttl)
+func newClientv3(c *clientv3.Client) Clientv3 {
+	// ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	return &clientv3_{
+		cli:    c,
+		ctx:    ctx,
+		cancel: cancel,
+	}
 }
 
-func (s *Clientv3) GrantCtx(ctx context.Context, ttl int64) (*clientv3.LeaseGrantResponse, error) {
+func (s *clientv3_) assert() {
+	switch s.cli {
+	case nil:
+		logs.Fatalf("error")
+	}
+}
+
+func (s *clientv3_) Ctx() context.Context {
+	return s.ctx
+}
+
+func (s *clientv3_) Grant(ctx context.Context, ttl int64) (*clientv3.LeaseGrantResponse, error) {
+	s.assert()
 	return s.cli.Grant(ctx, ttl)
 }
 
-func (s *Clientv3) KeepAlive(id clientv3.LeaseID) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
-	return s.cli.KeepAlive(s.ctx, id)
-}
-
-func (s *Clientv3) KeepAliveCtx(ctx context.Context, id clientv3.LeaseID) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
+func (s *clientv3_) KeepAlive(ctx context.Context, id clientv3.LeaseID) (<-chan *clientv3.LeaseKeepAliveResponse, error) {
+	s.assert()
 	return s.cli.KeepAlive(ctx, id)
 }
 
-func (s *Clientv3) Cancel() {
+func (s *clientv3_) Cancel() {
 	s.cancel()
 }
 
-func (s *Clientv3) Delete(key string, opts ...clientv3.OpOption) (*clientv3.DeleteResponse, error) {
-	return s.cli.Delete(s.ctx, key)
-}
-
-func (s *Clientv3) DeleteCtx(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.DeleteResponse, error) {
+func (s *clientv3_) Delete(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.DeleteResponse, error) {
+	s.assert()
 	return s.cli.Delete(ctx, key)
 }
 
-func (s *Clientv3) Get(key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error) {
-	return s.cli.Get(s.ctx, key, opts...)
-}
-
-func (s *Clientv3) GetCtx(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error) {
+func (s *clientv3_) Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error) {
+	s.assert()
 	return s.cli.Get(ctx, key, opts...)
 }
 
-func (s *Clientv3) Put(key string, val string, opts ...clientv3.OpOption) (*clientv3.PutResponse, error) {
-	return s.cli.Put(s.ctx, key, val, opts...)
-}
-
-func (s *Clientv3) PutCtx(ctx context.Context, key string, val string, opts ...clientv3.OpOption) (*clientv3.PutResponse, error) {
+func (s *clientv3_) Put(ctx context.Context, key string, val string, opts ...clientv3.OpOption) (*clientv3.PutResponse, error) {
+	s.assert()
 	return s.cli.Put(ctx, key, val, opts...)
 }
 
-func (s *Clientv3) Watch(key string, opts ...clientv3.OpOption) clientv3.WatchChan {
-	return s.cli.Watch(s.ctx, key, opts...)
-}
-
-func (s *Clientv3) WatchCtx(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
+func (s *clientv3_) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
+	s.assert()
 	return s.cli.Watch(ctx, key, opts...)
 }
 
-func (s *Clientv3) Close() {
-	s.cli.Close()
+func (s *clientv3_) Free() {
+	switch s.cli {
+	case nil:
+	default:
+		etcds.Put(s)
+	}
+}
+
+func (s *clientv3_) Close() {
+	switch s.cli {
+	case nil:
+	default:
+		_ = s.cli.Close()
+		s.cli = nil
+	}
 }

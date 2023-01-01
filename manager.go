@@ -90,8 +90,8 @@ func (s *Manager) RemoveWith(schema string, cb func(string, *Builder)) {
 		}
 		logs.Errorf("%v begin size=%v", schema, len(s.m))
 		cb(schema, b)
-		delete(s.m, schema)
 		grpc_resolver.UnregisterForTesting(schema)
+		delete(s.m, schema)
 		logs.Errorf("%v end size=%v", schema, len(s.m))
 	}
 	s.l.Unlock()
@@ -110,8 +110,8 @@ func (s *Manager) Remove(schema string) {
 			goto ERR
 		}
 		logs.Errorf("%v begin size=%v", schema, len(s.m))
-		delete(s.m, schema)
 		grpc_resolver.UnregisterForTesting(schema)
+		delete(s.m, schema)
 		logs.Errorf("%v end size=%v", schema, len(s.m))
 	}
 	s.l.Unlock()
@@ -124,8 +124,8 @@ func (s *Manager) RangeRemoveWith(cb func(string, *Builder)) {
 	for schema, b := range s.m {
 		logs.Errorf("%v begin size=%v", schema, len(s.m))
 		cb(schema, b)
-		delete(s.m, schema)
 		grpc_resolver.UnregisterForTesting(schema)
+		delete(s.m, schema)
 		logs.Errorf("%v end size=%v", schema, len(s.m))
 	}
 	s.l.Unlock()
@@ -135,8 +135,8 @@ func (s *Manager) RangeRemove() {
 	s.l.Lock()
 	for schema := range s.m {
 		logs.Errorf("%v begin size=%v", schema, len(s.m))
-		delete(s.m, schema)
 		grpc_resolver.UnregisterForTesting(schema)
+		delete(s.m, schema)
 		logs.Errorf("%v end size=%v", schema, len(s.m))
 	}
 	s.l.Unlock()
