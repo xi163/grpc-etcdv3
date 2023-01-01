@@ -15,24 +15,22 @@ import (
 
 // BalanceDialAddr
 func BalanceDialAddr(unique bool, schema, etcdAddr, serviceName, myAddr string, myPort int) (*grpc.ClientConn, error) {
-	serviceValue := ""
 	switch myAddr == "" || myPort == 0 {
 	case true:
+		return BalanceDial(unique, schema, etcdAddr, serviceName)
 	default:
-		serviceValue = strings.Join([]string{":", net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, "")
+		return BalanceDialHost(unique, schema, etcdAddr, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
 	}
-	return BalanceDial(unique, schema, etcdAddr, strings.Join([]string{serviceName, serviceValue}, ""))
 }
 
 // BalanceDialHost
 func BalanceDialHost(unique bool, schema, etcdAddr, serviceName, myHost string) (*grpc.ClientConn, error) {
-	serviceValue := ""
 	switch myHost == "" {
 	case true:
+		return BalanceDial(unique, schema, etcdAddr, serviceName)
 	default:
-		serviceValue = strings.Join([]string{":", myHost}, "")
+		return BalanceDial(unique, schema, etcdAddr, strings.Join([]string{serviceName, myHost}, ":"))
 	}
-	return BalanceDial(unique, schema, etcdAddr, strings.Join([]string{serviceName, serviceValue}, ""))
 }
 
 // BalanceDial
@@ -63,7 +61,7 @@ func BalanceDial(unique bool, schema, etcdAddr, serviceName string) (conn *grpc.
 
 // DirectDialAddr
 func DirectDialAddr(schema, etcdAddr, serviceName, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	opts := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, roundrobin.Name)),
 		grpc.WithChainStreamInterceptor(),
@@ -80,7 +78,7 @@ func DirectDialAddr(schema, etcdAddr, serviceName, myAddr string, myPort int) (c
 
 // DirectDialHost
 func DirectDialHost(schema, etcdAddr, serviceName string, HostAddr string) (conn *grpc.ClientConn, err error) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	opts := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, roundrobin.Name)),
 		grpc.WithChainStreamInterceptor(),

@@ -15,6 +15,10 @@ import (
 // GetBalanceConn
 func GetBalanceConn(schema, etcdAddr, serviceName string) (conn *grpc.ClientConn, err error) {
 	target := TargetString(false, schema, serviceName)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+	etcds.Update(etcdAddr, func(v Clientv3) {
+		v.Delete(ctx, target)
+	})
 	logs.Debugf("%v %v:%v", target, "BalanceDial")
 	conn, err = BalanceDial(false, schema, etcdAddr, serviceName)
 	switch err {
@@ -36,36 +40,25 @@ func GetBalanceConn(schema, etcdAddr, serviceName string) (conn *grpc.ClientConn
 
 // GetConn
 func GetConn(schema, etcdAddr, serviceName, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
-	conn, ok := rpcConns.GetByAddr(myAddr, myPort)
-	switch ok {
-	case true:
-		target := TargetString(false, schema, serviceName)
-		logs.Debugf("%v %v:%v", target, "GetConnByAddr", net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
-		return conn, nil
-	default:
-		target := TargetString(false, schema, serviceName)
-		logs.Debugf("%v %v:%v", target, "BalanceDialAddr", net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
-		conn, err = BalanceDialAddr(false, schema, etcdAddr, serviceName, myAddr, myPort)
-		switch err {
-		case nil:
-			rpcConns.TryAddByAddr(myAddr, myPort, conn)
-		default:
-		}
-	}
-	return
+	return GetConnByHost(schema, etcdAddr, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
 }
 
 // GetConn
 func GetConnByHost(schema, etcdAddr, serviceName, myHost string) (conn *grpc.ClientConn, err error) {
+	target := TargetString(false, schema, serviceName)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+	etcds.Update(etcdAddr, func(v Clientv3) {
+		v.Delete(ctx, target)
+	})
 	conn, ok := rpcConns.Get(myHost)
 	switch ok {
 	case true:
 		target := TargetString(false, schema, serviceName)
-		logs.Debugf("%v %v:%v", target, "GetConnByAddr", myHost)
+		logs.Debugf("%v %v:%v", target, "BalanceDialHost", myHost)
 		return conn, nil
 	default:
 		target := TargetString(false, schema, serviceName)
-		logs.Debugf("%v %v:%v", target, "BalanceDialAddr", myHost)
+		logs.Debugf("%v %v:%v", target, "BalanceDialHost", myHost)
 		conn, err = BalanceDialHost(false, schema, etcdAddr, serviceName, myHost)
 		switch err {
 		case nil:
