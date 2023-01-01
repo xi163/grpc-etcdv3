@@ -267,13 +267,6 @@ func (s *client) watch(release bool, ctx context.Context, key string, opts ...cl
 	return
 }
 
-func (s *client) closed() (ok bool) {
-	s.l.RLock()
-	ok = s.cli == nil
-	s.l.RUnlock()
-	return
-}
-
 func (s *client) close() {
 	s.l.Lock()
 	switch s.cli {
@@ -287,8 +280,8 @@ func (s *client) close() {
 }
 
 func (s *client) Close() {
-	switch s.closed() {
-	case true:
+	switch s.get_client() {
+	case nil:
 	default:
 		s.close()
 	}

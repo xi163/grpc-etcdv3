@@ -18,30 +18,44 @@ import (
 // <summary>
 // Builder
 // <summary>
-type Builder struct {
+type Builder interface {
+	grpc_resolver.Builder
+	Len() (c int)
+	Range(cb func(string, string, Watcher))
+	Get(target string) (w Watcher, ok bool)
+	GetAdd(target string) (w Watcher, ok bool)
+	Remove(target string, cb func(Watcher))
+	RangeRemove(cb func(Watcher))
+	Close()
+}
+
+// <summary>
+// Builder_
+// <summary>
+type Builder_ struct {
 	grpc_resolver.Builder
 	schema string
 	m      map[string]Watcher
 	l      *sync.RWMutex
 }
 
-func newBuilder(schema string) *Builder {
+func newBuilder(schema string) Builder {
 	logs.Tracef("%v", schema)
-	return &Builder{
+	return &Builder_{
 		schema: schema,
 		m:      map[string]Watcher{},
 		l:      &sync.RWMutex{},
 	}
 }
 
-func (s *Builder) Len() (c int) {
+func (s *Builder_) Len() (c int) {
 	s.l.RLock()
 	c = len(s.m)
 	s.l.RUnlock()
 	return
 }
 
-func (s *Builder) Range(cb func(string, string, Watcher)) {
+func (s *Builder_) Range(cb func(string, string, Watcher)) {
 	s.l.RLock()
 	for target, w := range s.m {
 		cb(s.schema, target, w)
@@ -49,7 +63,7 @@ func (s *Builder) Range(cb func(string, string, Watcher)) {
 	s.l.RUnlock()
 }
 
-func (s *Builder) Get(target string) (w Watcher, ok bool) {
+func (s *Builder_) Get(target string) (w Watcher, ok bool) {
 	// logs.Debugf("%v begin size=%v", target, s.Len())
 	s.l.RLock()
 	w, ok = s.m[target]
@@ -58,7 +72,7 @@ func (s *Builder) Get(target string) (w Watcher, ok bool) {
 	return
 }
 
-func (s *Builder) GetAdd(target string) (w Watcher, ok bool) {
+func (s *Builder_) GetAdd(target string) (w Watcher, ok bool) {
 	w, ok = s.Get(target)
 	switch ok {
 	case true:
@@ -68,7 +82,7 @@ func (s *Builder) GetAdd(target string) (w Watcher, ok bool) {
 	return
 }
 
-func (s *Builder) getAdd(target string) (w Watcher, ok bool) {
+func (s *Builder_) getAdd(target string) (w Watcher, ok bool) {
 	// logs.Debugf("%v begin size=%v", target, s.Len())
 	s.l.Lock()
 	w, ok = s.m[target]
@@ -84,8 +98,33 @@ func (s *Builder) getAdd(target string) (w Watcher, ok bool) {
 	return
 }
 
-func (s *Builder) Remove(target string) {
-	c, _, ok := s.remove(target)
+func (s *Builder_) remove(target string, cb func(Watcher)) (c int, w Watcher, ok bool) {
+	s.l.Lock()
+	w, ok = s.m[target]
+	switch ok {
+	case true:
+		logs.Errorf("%v begin size=%v", target, len(s.m))
+		cb(w)
+		delete(s.m, target)
+		logs.Errorf("%v end size=%v", target, len(s.m))
+	}
+	c = len(s.m)
+	s.l.Unlock()
+	return
+}
+
+func (s *Builder_) remove_(target string, cb func(Watcher)) (c int, w Watcher, ok bool) {
+	_, ok = s.Get(target)
+	switch ok {
+	case true:
+		c, w, ok = s.remove(target, cb)
+	default:
+	}
+	return
+}
+
+func (s *Builder_) Remove(target string, cb func(Watcher)) {
+	c, _, ok := s.remove_(target, cb)
 	switch ok {
 	case true:
 		switch c {
@@ -95,33 +134,11 @@ func (s *Builder) Remove(target string) {
 	}
 }
 
-func (s *Builder) remove(target string) (c int, w Watcher, ok bool) {
-	s.l.Lock()
-	w, ok = s.m[target]
-	switch ok {
-	case true:
-		logs.Errorf("%v begin size=%v", target, len(s.m))
-		ctx, _ := context.WithCancel(context.Background())
-		// w.Cli().Cancel()
-		w.Cli().Delete(ctx, target)
-		w.NotifyClose()
-		delete(s.m, target)
-		logs.Errorf("%v end size=%v", target, len(s.m))
-	}
-	c = len(s.m)
-	s.l.Unlock()
-	return
-}
-
-func (s *Builder) RangeRemove(cb func(string, string, Watcher)) {
-	ctx, _ := context.WithCancel(context.Background())
+func (s *Builder_) RangeRemove(cb func(Watcher)) {
 	s.l.Lock()
 	for target, w := range s.m {
 		logs.Errorf("%v begin size=%v", target, len(s.m))
-		cb(s.schema, target, w)
-		// w.Cli().Cancel()
-		w.Cli().Delete(ctx, target)
-		w.NotifyClose()
+		cb(w)
 		delete(s.m, target)
 		logs.Errorf("%v end size=%v", target, len(s.m))
 	}
@@ -151,7 +168,7 @@ func ParseTarget(target grpc_resolver.Target) (schema, serviceName string, uniqu
 }
 
 // Build
-func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.ClientConn, _ grpc_resolver.BuildOptions) (grpc_resolver.Resolver, error) {
+func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.ClientConn, _ grpc_resolver.BuildOptions) (grpc_resolver.Resolver, error) {
 	// logs.Errorf("%v", resolver_target.URL)
 	schema, serviceName, unique := ParseTarget(resolver_target)
 	target := TargetString(unique, schema, serviceName)
@@ -197,22 +214,22 @@ func (s *Builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.C
 }
 
 // Scheme
-func (s *Builder) Scheme() string {
+func (s *Builder_) Scheme() string {
 	return s.schema
 }
 
-func (s *Builder) Close() {
-	s.RangeRemove(func(_, _ string, w Watcher) {
+func (s *Builder_) Close() {
+	s.RangeRemove(func(w Watcher) {
 		w.Close()
 	})
 	s.reset()
 }
 
-func (s *Builder) reset() {
+func (s *Builder_) reset() {
 	switch len(s.m) {
 	case 0:
 	default:
 		logs.Fatalf("error")
 	}
-	manager.Remove(s.schema)
+	manager.Remove(s.schema, func(string, Builder) {})
 }

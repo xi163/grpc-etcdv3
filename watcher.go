@@ -55,7 +55,6 @@ type Watcher_ struct {
 	cli      Client
 	revision int64
 	target   string
-	cb       func(string)
 	watched  bool
 	mq       mq.Queue
 	l        *sync.Mutex
@@ -64,9 +63,10 @@ type Watcher_ struct {
 	flag     cc.AtomFlag
 	hosts    map[string]bool
 	cc       map[grpc_resolver.ClientConn]bool
+	cb       func(string, func(Watcher))
 }
 
-func newWatcher(target string, cb func(string)) Watcher {
+func newWatcher(target string, cb func(string, func(Watcher))) Watcher {
 	logs.Tracef("%v", target)
 	s := &Watcher_{
 		r:        newResolver(target),
@@ -96,8 +96,15 @@ func (s *Watcher_) Resolver() *Resolver {
 	return s.r
 }
 
+func (s *Watcher_) cleanup() {
+	ctx, _ := context.WithCancel(context.Background())
+	// s.Cli().Cancel()
+	s.Cli().Delete(ctx, s.target)
+}
+
 func (s *Watcher_) reset() {
-	s.cb(s.target)
+	s.cb(s.target, func(_ Watcher) {})
+	s.cleanup()
 	s.mq = nil
 }
 
@@ -251,7 +258,7 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 					switch ok {
 					case true:
 						logs.Debugf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
-						rpcConns.RemoveConn(host)
+						rpcConns.Remove(host)
 						delete(s.hosts, host)
 						hosts := []grpc_resolver.Address{}
 						for host := range s.hosts {
@@ -260,10 +267,11 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 						for cc := range s.cc {
 							cc.UpdateState(grpc_resolver.State{Addresses: hosts})
 						}
-						s.cb(s.target)
+						s.cb(s.target, func(_ Watcher) {})
+						s.stop()
 					default:
 						logs.Errorf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
-						rpcConns.RemoveConn(host)
+						rpcConns.Remove(host)
 						delete(s.hosts, host)
 						hosts := []grpc_resolver.Address{}
 						for host := range s.hosts {
@@ -272,7 +280,8 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 						for cc := range s.cc {
 							cc.UpdateState(grpc_resolver.State{Addresses: hosts})
 						}
-						s.cb(s.target)
+						s.cb(s.target, func(_ Watcher) {})
+						s.stop()
 					}
 				default:
 					host := string(ev.Kv.Key)
@@ -292,6 +301,7 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 	}
 	return
 EXIT:
+	s.cleanup()
 	exit = true
 	return
 }

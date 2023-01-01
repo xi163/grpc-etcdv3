@@ -14,27 +14,40 @@ var (
 // <summary>
 // Manager
 // <summary>
-type Manager struct {
-	m map[string]*Builder
+type Manager interface {
+	Len() (c int)
+	Range(cb func(string, Builder))
+	Get(schema string) (b Builder, ok bool)
+	GetAdd(schema string) (b Builder, ok bool)
+	Remove(schema string, cb func(string, Builder))
+	RangeRemove(cb func(string, Builder))
+	Close()
+}
+
+// <summary>
+// Manager_
+// <summary>
+type Manager_ struct {
+	m map[string]Builder
 	l *sync.RWMutex
 }
 
-func newManager() *Manager {
-	s := &Manager{
-		m: map[string]*Builder{},
+func newManager() Manager {
+	s := &Manager_{
+		m: map[string]Builder{},
 		l: &sync.RWMutex{},
 	}
 	return s
 }
 
-func (s *Manager) Len() (c int) {
+func (s *Manager_) Len() (c int) {
 	s.l.RLock()
 	c = len(s.m)
 	s.l.RUnlock()
 	return
 }
 
-func (s *Manager) Range(cb func(string, *Builder)) {
+func (s *Manager_) Range(cb func(string, Builder)) {
 	s.l.RLock()
 	for schema, b := range s.m {
 		cb(schema, b)
@@ -42,16 +55,14 @@ func (s *Manager) Range(cb func(string, *Builder)) {
 	s.l.RUnlock()
 }
 
-func (s *Manager) Get(schema string) (b *Builder, ok bool) {
-	// logs.Debugf("%v begin size=%v", schema, s.Len())
+func (s *Manager_) Get(schema string) (b Builder, ok bool) {
 	s.l.RLock()
 	b, ok = s.m[schema]
 	s.l.RUnlock()
-	// logs.Debugf("%v end size=%v", schema, s.Len())
 	return
 }
 
-func (s *Manager) GetAdd(schema string) (b *Builder, ok bool) {
+func (s *Manager_) GetAdd(schema string) (b Builder, ok bool) {
 	b, ok = s.Get(schema)
 	switch ok {
 	case true:
@@ -61,8 +72,7 @@ func (s *Manager) GetAdd(schema string) (b *Builder, ok bool) {
 	return
 }
 
-func (s *Manager) getAdd(schema string) (b *Builder, ok bool) {
-	// logs.Debugf("%v begin size=%v", schema, s.Len())
+func (s *Manager_) getAdd(schema string) (b Builder, ok bool) {
 	s.l.Lock()
 	b, ok = s.m[schema]
 	switch ok {
@@ -74,11 +84,10 @@ func (s *Manager) getAdd(schema string) (b *Builder, ok bool) {
 		ok = true
 	}
 	s.l.Unlock()
-	// logs.Debugf("%v end size=%v", schema, s.Len())
 	return
 }
 
-func (s *Manager) RemoveWith(schema string, cb func(string, *Builder)) {
+func (s *Manager_) remove(schema string, cb func(string, Builder)) {
 	s.l.Lock()
 	b, ok := s.m[schema]
 	switch ok {
@@ -99,27 +108,16 @@ ERR:
 	logs.Fatalf("error")
 }
 
-func (s *Manager) Remove(schema string) {
-	s.l.Lock()
-	b, ok := s.m[schema]
+func (s *Manager_) Remove(schema string, cb func(string, Builder)) {
+	_, ok := s.Get(schema)
 	switch ok {
 	case true:
-		switch schema == b.Scheme() {
-		case false:
-			s.l.Unlock()
-			goto ERR
-		}
-		logs.Errorf("%v begin size=%v", schema, len(s.m))
-		grpc_resolver.UnregisterForTesting(schema)
-		delete(s.m, schema)
-		logs.Errorf("%v end size=%v", schema, len(s.m))
+		s.remove(schema, cb)
+	default:
 	}
-	s.l.Unlock()
-ERR:
-	logs.Fatalf("error")
 }
 
-func (s *Manager) RangeRemoveWith(cb func(string, *Builder)) {
+func (s *Manager_) RangeRemove(cb func(string, Builder)) {
 	s.l.Lock()
 	for schema, b := range s.m {
 		logs.Errorf("%v begin size=%v", schema, len(s.m))
@@ -131,20 +129,9 @@ func (s *Manager) RangeRemoveWith(cb func(string, *Builder)) {
 	s.l.Unlock()
 }
 
-func (s *Manager) RangeRemove() {
-	s.l.Lock()
-	for schema := range s.m {
-		logs.Errorf("%v begin size=%v", schema, len(s.m))
-		grpc_resolver.UnregisterForTesting(schema)
-		delete(s.m, schema)
-		logs.Errorf("%v end size=%v", schema, len(s.m))
-	}
-	s.l.Unlock()
-}
-
-func (s *Manager) Close() {
+func (s *Manager_) Close() {
 	logs.Debugf("")
-	s.RangeRemoveWith(func(_ string, b *Builder) {
+	s.RangeRemove(func(_ string, b Builder) {
 		b.Close()
 	})
 }

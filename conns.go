@@ -19,14 +19,14 @@ var (
 type RpcConns interface {
 	Len() (c int)
 	Range(cb func(string, *grpc.ClientConn))
-	GetConnByAddr(addr string, port int) (conn *grpc.ClientConn, ok bool)
-	GetConn(host string) (conn *grpc.ClientConn, ok bool)
+	GetByAddr(addr string, port int) (conn *grpc.ClientConn, ok bool)
+	Get(host string) (conn *grpc.ClientConn, ok bool)
 	GetConnsByAddr(hosts []Host) (conns []*grpc.ClientConn, valid []Host)
 	GetConns(hosts []string) (conns []*grpc.ClientConn, valid []string)
-	TryAddConnByAddr(addr string, port int, conn *grpc.ClientConn)
-	TryAddConn(host string, conn *grpc.ClientConn)
-	RemoveConnByAddr(addr string, port int)
-	RemoveConn(host string)
+	TryAddByAddr(addr string, port int, conn *grpc.ClientConn)
+	TryAdd(host string, conn *grpc.ClientConn)
+	RemoveByAddr(addr string, port int)
+	Remove(host string)
 }
 
 // <summary>
@@ -68,12 +68,12 @@ func (s *RpcConns_) Range(cb func(string, *grpc.ClientConn)) {
 	s.l.RUnlock()
 }
 
-func (s *RpcConns_) GetConnByAddr(addr string, port int) (conn *grpc.ClientConn, ok bool) {
-	conn, ok = s.GetConn(net.JoinHostPort(addr, strconv.Itoa(port)))
+func (s *RpcConns_) GetByAddr(addr string, port int) (conn *grpc.ClientConn, ok bool) {
+	conn, ok = s.Get(net.JoinHostPort(addr, strconv.Itoa(port)))
 	return
 }
 
-func (s *RpcConns_) GetConn(host string) (conn *grpc.ClientConn, ok bool) {
+func (s *RpcConns_) Get(host string) (conn *grpc.ClientConn, ok bool) {
 	s.l.RLock()
 	conn, ok = s.m[host]
 	s.l.RUnlock()
@@ -110,19 +110,20 @@ func (s *RpcConns_) GetConns(hosts []string) (conns []*grpc.ClientConn, valid []
 	return
 }
 
-func (s *RpcConns_) TryAddConnByAddr(addr string, port int, conn *grpc.ClientConn) {
-	s.TryAddConn(net.JoinHostPort(addr, strconv.Itoa(port)), conn)
+func (s *RpcConns_) TryAddByAddr(addr string, port int, conn *grpc.ClientConn) {
+	s.TryAdd(net.JoinHostPort(addr, strconv.Itoa(port)), conn)
 }
 
-func (s *RpcConns_) TryAddConn(host string, conn *grpc.ClientConn) {
-	switch s.exist(host) {
+func (s *RpcConns_) TryAdd(host string, conn *grpc.ClientConn) {
+	_, ok := s.Get(host)
+	switch ok {
 	case true:
 	default:
-		s.tryAddConn(host, conn)
+		s.tryAdd(host, conn)
 	}
 }
 
-func (s *RpcConns_) tryAddConn(host string, conn *grpc.ClientConn) {
+func (s *RpcConns_) tryAdd(host string, conn *grpc.ClientConn) {
 	s.l.Lock()
 	_, ok := s.m[host]
 	switch ok {
@@ -133,26 +134,20 @@ func (s *RpcConns_) tryAddConn(host string, conn *grpc.ClientConn) {
 	s.l.Unlock()
 }
 
-func (s *RpcConns_) RemoveConnByAddr(addr string, port int) {
-	s.RemoveConn(net.JoinHostPort(addr, strconv.Itoa(port)))
+func (s *RpcConns_) RemoveByAddr(addr string, port int) {
+	s.Remove(net.JoinHostPort(addr, strconv.Itoa(port)))
 }
 
-func (s *RpcConns_) RemoveConn(host string) {
-	switch s.exist(host) {
+func (s *RpcConns_) Remove(host string) {
+	_, ok := s.Get(host)
+	switch ok {
 	case true:
-		s.removeConn(host)
+		s.remove(host)
 	default:
 	}
 }
 
-func (s *RpcConns_) exist(host string) (ok bool) {
-	s.l.RLock()
-	_, ok = s.m[host]
-	s.l.RUnlock()
-	return
-}
-
-func (s *RpcConns_) removeConn(host string) {
+func (s *RpcConns_) remove(host string) {
 	logs.Debugf("%v begin size=%v", host, s.Len())
 	s.l.Lock()
 	delete(s.m, host)
