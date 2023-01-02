@@ -59,6 +59,7 @@ func (s *etcds_) Update(etcdAddr string, reset func(Clientv3)) {
 			reset(*value.(*Clientv3))
 			client.Close()
 			c, err := s.new(cb)
+			e = err
 			switch err {
 			case nil:
 				*value.(*Clientv3) = c.(Clientv3)
