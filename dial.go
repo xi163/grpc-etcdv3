@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cwloo/gonet/logs"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 )
@@ -36,15 +35,11 @@ func BalanceDialHost(unique bool, schema, etcdAddr, serviceName, myHost string) 
 // BalanceDial
 func BalanceDial(unique bool, schema, etcdAddr, serviceName string) (conn *grpc.ClientConn, err error) {
 	target := TargetString(unique, schema, serviceName)
-	b, ok := manager.GetAdd(schema)
+	_, ok := manager.GetAdd(schema)
 	switch ok {
 	case true:
-		_, ok := b.GetAdd(target)
-		switch ok {
-		case true:
-		}
-		logs.Debugf("%v", target)
-		ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+		// logs.Debugf("%v", target)
+		ctx, _ := context.WithTimeout(context.Background(), time.Duration(1)*time.Second)
 		etcds.Update(etcdAddr, func(v Clientv3) {
 			v.Delete(ctx, target)
 		})
@@ -64,7 +59,7 @@ func BalanceDial(unique bool, schema, etcdAddr, serviceName string) (conn *grpc.
 
 // DirectDialAddr
 func DirectDialAddr(schema, etcdAddr, serviceName, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(1)*time.Second)
 	opts := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, roundrobin.Name)),
 		grpc.WithChainStreamInterceptor(),
@@ -73,7 +68,7 @@ func DirectDialAddr(schema, etcdAddr, serviceName, myAddr string, myPort int) (c
 		grpc.WithDisableRetry(),
 	}
 	target := strings.Join([]string{myAddr, strconv.Itoa(myPort)}, ":")
-	logs.Debugf("%v", target)
+	// logs.Debugf("%v", target)
 	// conn, err = grpc.Dial(target, opts...)
 	conn, err = grpc.DialContext(ctx, target, opts...)
 	return
@@ -81,7 +76,7 @@ func DirectDialAddr(schema, etcdAddr, serviceName, myAddr string, myPort int) (c
 
 // DirectDialHost
 func DirectDialHost(schema, etcdAddr, serviceName string, HostAddr string) (conn *grpc.ClientConn, err error) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(1)*time.Second)
 	opts := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, roundrobin.Name)),
 		grpc.WithChainStreamInterceptor(),
@@ -90,7 +85,7 @@ func DirectDialHost(schema, etcdAddr, serviceName string, HostAddr string) (conn
 		grpc.WithDisableRetry(),
 	}
 	target := HostAddr
-	logs.Debugf("%v", target)
+	// logs.Debugf("%v", target)
 	// conn, err = grpc.Dial(target, opts...)
 	conn, err = grpc.DialContext(ctx, target, opts...)
 	return

@@ -1,6 +1,8 @@
 package getcdv3
 
 import (
+	"net"
+	"strings"
 	"sync"
 
 	"github.com/cwloo/gonet/logs"
@@ -97,15 +99,14 @@ func (s *Manager_) remove(schema string, cb func(string, Builder)) {
 			s.l.Unlock()
 			goto ERR
 		}
-		logs.Errorf("%v begin size=%v", schema, len(s.m))
 		cb(schema, b)
 		grpc_resolver.UnregisterForTesting(schema)
 		delete(s.m, schema)
-		logs.Errorf("%v end size=%v", schema, len(s.m))
 	}
 	s.l.Unlock()
+	return
 ERR:
-	logs.Fatalf("error")
+	logs.Fatalf("error %v %v", schema, b.Scheme())
 }
 
 func (s *Manager_) Remove(schema string, cb func(string, Builder)) {
@@ -120,17 +121,14 @@ func (s *Manager_) Remove(schema string, cb func(string, Builder)) {
 func (s *Manager_) RangeRemove(cb func(string, Builder)) {
 	s.l.Lock()
 	for schema, b := range s.m {
-		logs.Errorf("%v begin size=%v", schema, len(s.m))
 		cb(schema, b)
 		grpc_resolver.UnregisterForTesting(schema)
 		delete(s.m, schema)
-		logs.Errorf("%v end size=%v", schema, len(s.m))
 	}
 	s.l.Unlock()
 }
 
 func (s *Manager_) Close() {
-	logs.Debugf("")
 	s.RangeRemove(func(_ string, b Builder) {
 		b.Close()
 	})
@@ -143,4 +141,45 @@ func TargetString(unique bool, schema, serviceName string) string {
 	default:
 		return GetPrefix(schema, serviceName)
 	}
+}
+
+func Slice(d map[string]bool) (v []string) {
+	for k := range d {
+		v = append(v, k)
+	}
+	return
+}
+
+func TargetToHost(target string) (unique bool, schema, serviceName, host string) {
+	sub := ""
+	match := ":///"
+	idx := strings.Index(target, match)
+	switch idx >= 0 {
+	case true:
+		schema = target[:idx]
+		sub = target[idx+len(match):]
+		slice := strings.Split(sub, ":")
+		switch len(slice) {
+		case 1:
+			idx := strings.LastIndex(slice[0], "/")
+			unique = idx < 0
+			switch unique {
+			case true:
+				serviceName = slice[0]
+			default:
+				serviceName = slice[0][:idx]
+			}
+		case 3:
+			serviceName = slice[0]
+			idx := strings.LastIndex(slice[2], "/")
+			unique = idx < 0
+			switch unique {
+			case true:
+				host = net.JoinHostPort(slice[1], slice[2])
+			default:
+				host = net.JoinHostPort(slice[1], slice[2][0:idx])
+			}
+		}
+	}
+	return
 }

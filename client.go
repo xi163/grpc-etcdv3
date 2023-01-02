@@ -98,7 +98,6 @@ RETRY:
 	e = err
 	switch err {
 	case nil:
-		logs.Errorf("")
 		resp, e = cli.Grant(ctx, ttl)
 		switch e {
 		case nil:
@@ -131,7 +130,6 @@ RETRY:
 	e = err
 	switch err {
 	case nil:
-		logs.Errorf("")
 		ch, e = cli.KeepAlive(ctx, id)
 		switch e {
 		case nil:
@@ -173,7 +171,6 @@ RETRY:
 	e = err
 	switch err {
 	case nil:
-		logs.Errorf("")
 		resp, e = cli.Delete(ctx, key, opts...)
 		switch e {
 		case nil:
@@ -206,7 +203,6 @@ RETRY:
 	e = err
 	switch err {
 	case nil:
-		logs.Errorf("")
 		resp, e = cli.Get(ctx, key, opts...)
 		switch e {
 		case nil:
@@ -239,7 +235,6 @@ RETRY:
 	e = err
 	switch err {
 	case nil:
-		logs.Errorf("")
 		resp, e = cli.Put(ctx, key, val, opts...)
 		switch e {
 		case nil:
@@ -267,7 +262,6 @@ func (s *client) WatchRelease(ctx context.Context, key string, opts ...clientv3.
 }
 
 func (s *client) watch(free bool, ctx context.Context, key string, opts ...clientv3.OpOption) (c clientv3.WatchChan) {
-	logs.Errorf("")
 	cli, err := s.get_cli()
 	switch err {
 	case nil:
@@ -275,7 +269,6 @@ func (s *client) watch(free bool, ctx context.Context, key string, opts ...clien
 		case nil:
 			logs.Fatalf("error")
 		default:
-			logs.Errorf("")
 			c = cli.Watch(ctx, key, opts...)
 			switch free {
 			case true:
@@ -293,7 +286,7 @@ func (s *client) free() {
 	switch s.cli {
 	case nil:
 	default:
-		logs.Errorf("")
+		// logs.Errorf("")
 		s.cli.Free()
 		s.cli = nil
 	}
@@ -313,7 +306,7 @@ func (s *client) close() {
 	switch s.cli {
 	case nil:
 	default:
-		logs.Errorf("")
+		// logs.Errorf("")
 		s.cli.Close()
 		s.cli = nil
 	}

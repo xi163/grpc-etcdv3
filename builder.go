@@ -21,10 +21,10 @@ import (
 type Builder interface {
 	grpc_resolver.Builder
 	Len() (c int)
-	Range(cb func(string, string, Watcher))
-	Get(target string) (w Watcher, ok bool)
-	GetAdd(target string) (w Watcher, ok bool)
-	Remove(target string, cb func(Watcher))
+	Range(cb func(Watcher))
+	Get(host string) (w Watcher, ok bool)
+	GetAdd(host, target string) (w Watcher, ok bool)
+	Remove(host string, cb func(Watcher))
 	RangeRemove(cb func(Watcher))
 	Close()
 }
@@ -40,7 +40,6 @@ type Builder_ struct {
 }
 
 func newBuilder(schema string) Builder {
-	logs.Tracef("%v", schema)
 	return &Builder_{
 		schema: schema,
 		m:      map[string]Watcher{},
@@ -55,90 +54,79 @@ func (s *Builder_) Len() (c int) {
 	return
 }
 
-func (s *Builder_) Range(cb func(string, string, Watcher)) {
+func (s *Builder_) Range(cb func(Watcher)) {
 	s.l.RLock()
-	for target, w := range s.m {
-		cb(s.schema, target, w)
+	for _, w := range s.m {
+		cb(w)
 	}
 	s.l.RUnlock()
 }
 
-func (s *Builder_) Get(target string) (w Watcher, ok bool) {
-	// logs.Debugf("%v begin size=%v", target, s.Len())
+func (s *Builder_) Get(host string) (w Watcher, ok bool) {
 	s.l.RLock()
-	w, ok = s.m[target]
+	w, ok = s.m[host]
 	s.l.RUnlock()
-	// logs.Debugf("%v end size=%v", target, s.Len())
 	return
 }
 
-func (s *Builder_) GetAdd(target string) (w Watcher, ok bool) {
-	w, ok = s.Get(target)
+func (s *Builder_) GetAdd(host, target string) (w Watcher, ok bool) {
+	w, ok = s.Get(host)
 	switch ok {
 	case true:
 	default:
-		w, ok = s.getAdd(target)
+		w, ok = s.getAdd(host, target)
 	}
 	return
 }
 
-func (s *Builder_) getAdd(target string) (w Watcher, ok bool) {
+func (s *Builder_) getAdd(host, target string) (w Watcher, ok bool) {
 	s.l.Lock()
-	w, ok = s.m[target]
+	w, ok = s.m[host]
 	switch ok {
 	case true:
 	default:
-		w = newWatcher(target, s.Remove)
-		s.m[target] = w
+		w = newWatcher(host, target, s.Remove)
+		s.m[host] = w
 		ok = true
 	}
 	s.l.Unlock()
 	return
 }
 
-func (s *Builder_) remove(target string, cb func(Watcher)) (c int, w Watcher, ok bool) {
+func (s *Builder_) remove(host string, cb func(Watcher)) (c int, w Watcher, ok bool) {
 	s.l.Lock()
-	w, ok = s.m[target]
+	w, ok = s.m[host]
 	switch ok {
 	case true:
-		logs.Errorf("%v begin size=%v", target, len(s.m))
 		cb(w)
-		delete(s.m, target)
-		logs.Errorf("%v end size=%v", target, len(s.m))
+		delete(s.m, host)
 	}
 	c = len(s.m)
 	s.l.Unlock()
 	return
 }
 
-func (s *Builder_) remove_(target string, cb func(Watcher)) (c int, w Watcher, ok bool) {
-	_, ok = s.Get(target)
+func (s *Builder_) Remove(host string, cb func(Watcher)) {
+	_, ok := s.Get(host)
 	switch ok {
 	case true:
-		c, w, ok = s.remove(target, cb)
-	default:
-	}
-	return
-}
-
-func (s *Builder_) Remove(target string, cb func(Watcher)) {
-	c, _, ok := s.remove_(target, cb)
-	switch ok {
-	case true:
-		switch c {
-		case 0:
-			s.reset()
+		c, _, ok := s.remove(host, cb)
+		switch ok {
+		case true:
+			switch c {
+			case 0:
+				s.reset()
+			}
 		}
+	default:
 	}
 }
 
 func (s *Builder_) RangeRemove(cb func(Watcher)) {
 	s.l.Lock()
-	for target, w := range s.m {
-		logs.Errorf("%v begin size=%v", target, len(s.m))
+	for host, w := range s.m {
 		cb(w)
-		delete(s.m, target)
-		logs.Errorf("%v end size=%v", target, len(s.m))
+		delete(s.m, host)
 	}
 	s.l.Unlock()
 	s.reset()
@@ -167,7 +155,6 @@ func ParseTarget(target grpc_resolver.Target) (schema, serviceName string, uniqu
 
 // Build
 func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.ClientConn, _ grpc_resolver.BuildOptions) (grpc_resolver.Resolver, error) {
-	// logs.Errorf("%v", resolver_target.URL)
 	schema, serviceName, unique := ParseTarget(resolver_target)
 	target := TargetString(unique, schema, serviceName)
 	switch s.schema == schema {
@@ -175,40 +162,35 @@ func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.
 	default:
 		logs.Fatalf("error")
 	}
-	watcher, ok := s.Get(target)
-	switch ok {
-	case true:
-	default:
-		logs.Fatalf("error")
-	}
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
-	resp, err := watcher.Cli().Get(ctx, target, clientv3.WithPrefix())
+	resp, err := cli.GetRelease(ctx, target, clientv3.WithPrefix())
 	switch err {
 	case nil:
-		msg := &WatcherMsg{
-			cc:     cc,
-			target: target,
-			hosts:  map[string]bool{}}
-		var addrs []grpc_resolver.Address
-		for i := range resp.Kvs {
-			// logs.Debugf("%v %v => %v", target, string(resp.Kvs[i].Key), string(resp.Kvs[i].Value))
-			addrs = append(addrs, grpc_resolver.Address{Addr: string(resp.Kvs[i].Value)})
-			msg.hosts[string(resp.Kvs[i].Value)] = true
-		}
 		switch len(resp.Kvs) {
 		case 0:
 			logs.Errorf("%v", target)
 			// s.Remove(target)
 		default:
+			var addrs []grpc_resolver.Address
+			for i := range resp.Kvs {
+				// logs.Debugf("%v %v => %v", target, string(resp.Kvs[i].Key), string(resp.Kvs[i].Value))
+				addrs = append(addrs, grpc_resolver.Address{Addr: string(resp.Kvs[i].Value)})
+				msg := &WatcherMsg{
+					cc:     cc,
+					target: target,
+					hosts:  map[string]bool{}}
+				msg.hosts[string(resp.Kvs[i].Value)] = true
+				watcher, _ := s.GetAdd(string(resp.Kvs[i].Value), target)
+				watcher.Update(resp.Header.Revision + 1)
+				watcher.Watch(msg)
+			}
 			cc.UpdateState(grpc_resolver.State{Addresses: addrs})
-			watcher.Update(resp.Header.Revision + 1)
-			watcher.Watch(msg)
 		}
 	default:
-		logs.Fatalf("%v %v", target, err.Error())
-		return nil, errors.New(logs.SprintErrorf("%v %v", target, err.Error()))
+		logs.Errorf("%v %v", target, err.Error())
+		return newResolver(target), errors.New(logs.SprintErrorf("%v %v", target, err.Error()))
 	}
-	return watcher.R(), nil
+	return newResolver(target), nil
 }
 
 // Scheme

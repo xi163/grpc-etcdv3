@@ -20,7 +20,6 @@ import (
 // <summary>
 type Watcher interface {
 	Cli() Client
-	R() *Resolver
 	Target() string
 	Update(revision int64)
 	Watch(msg *WatcherMsg)
@@ -51,9 +50,9 @@ type WatcherMsg struct {
 type Watcher_ struct {
 	// we can't inherit from grpc_resolver.Resolver, if do so,
 	// grpc_resolver.Resolver.Close() will destroy Watcher_, then it will be unpredictable !
-	r        *Resolver
 	cli      Client
 	revision int64
+	host     string
 	target   string
 	watched  bool
 	mq       mq.Queue
@@ -66,12 +65,11 @@ type Watcher_ struct {
 	cb       func(string, func(Watcher))
 }
 
-func newWatcher(target string, cb func(string, func(Watcher))) Watcher {
-	logs.Tracef("%v", target)
+func newWatcher(host, target string, cb func(string, func(Watcher))) Watcher {
 	s := &Watcher_{
-		r:        newResolver(target),
 		cli:      newClient(),
 		cb:       cb,
+		host:     host,
 		target:   target,
 		l:        &sync.Mutex{},
 		flag:     cc.NewAtomFlag(),
@@ -88,10 +86,6 @@ func (s *Watcher_) Cli() Client {
 	return s.cli
 }
 
-func (s *Watcher_) R() *Resolver {
-	return s.r
-}
-
 func (s *Watcher_) Target() string {
 	return s.target
 }
@@ -103,7 +97,7 @@ func (s *Watcher_) cleanup() {
 }
 
 func (s *Watcher_) reset() {
-	s.cb(s.target, func(_ Watcher) {})
+	s.cb(s.host, func(_ Watcher) {})
 	s.cleanup()
 	s.mq = nil
 }
@@ -113,7 +107,6 @@ func (s *Watcher_) Put() {
 }
 
 func (s *Watcher_) Close() {
-	logs.Errorf("%v", s.target)
 	switch s.watched {
 	case false:
 		s.Put()
@@ -124,7 +117,6 @@ func (s *Watcher_) Close() {
 }
 
 func (s *Watcher_) NotifyClose() {
-	logs.Errorf("%v", s.target)
 	switch s.watched {
 	case false:
 		s.Put()
@@ -134,7 +126,6 @@ func (s *Watcher_) NotifyClose() {
 }
 
 func (s *Watcher_) onQuit() {
-	logs.Errorf("%v", s.target)
 	s.Put()
 }
 
@@ -207,7 +198,6 @@ func (s *Watcher_) pick() (exit bool) {
 	for _, msg := range v {
 		switch msg := msg.(type) {
 		case *ExitStruct:
-			logs.Errorf("%v", msg.target)
 			goto EXIT
 		case *WatcherMsg:
 			switch s.target == msg.target {
@@ -258,7 +248,21 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 					switch ok {
 					case true:
 						logs.Debugf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
-						rpcConns.Remove(host)
+						hostConn, ok := rpcConns.Get(s.target)
+						switch ok {
+						case true:
+							hostConn.Remove(host)
+						default:
+							unique, schema, serviceName, _ := TargetToHost(s.target)
+							target := TargetString(unique, schema, serviceName)
+							hostConn, ok := rpcConns.Get(target)
+							switch ok {
+							case true:
+								hostConn.Remove(host)
+							default:
+								logs.Fatalf("error")
+							}
+						}
 						delete(s.hosts, host)
 						hosts := []grpc_resolver.Address{}
 						for host := range s.hosts {
@@ -267,11 +271,25 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 						for cc := range s.cc {
 							cc.UpdateState(grpc_resolver.State{Addresses: hosts})
 						}
-						s.cb(s.target, func(_ Watcher) {})
+						s.cb(s.host, func(_ Watcher) {})
 						s.stop()
 					default:
 						logs.Errorf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
-						rpcConns.Remove(host)
+						hostConn, ok := rpcConns.Get(s.target)
+						switch ok {
+						case true:
+							hostConn.Remove(host)
+						default:
+							unique, schema, serviceName, _ := TargetToHost(s.target)
+							target := TargetString(unique, schema, serviceName)
+							hostConn, ok := rpcConns.Get(target)
+							switch ok {
+							case true:
+								hostConn.Remove(host)
+							default:
+								logs.Fatalf("error")
+							}
+						}
 						delete(s.hosts, host)
 						hosts := []grpc_resolver.Address{}
 						for host := range s.hosts {
@@ -280,7 +298,7 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 						for cc := range s.cc {
 							cc.UpdateState(grpc_resolver.State{Addresses: hosts})
 						}
-						s.cb(s.target, func(_ Watcher) {})
+						s.cb(s.host, func(_ Watcher) {})
 						s.stop()
 					}
 				default:
@@ -295,7 +313,7 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 			s.stopping.Signal()
 		}
 	case <-s.stopping.Read():
-		logs.Debugf("stopping %v", s.target)
+		s.stopped()
 		goto EXIT
 		// default:
 	}
@@ -332,6 +350,10 @@ func (s *Watcher_) wait() {
 
 func (s *Watcher_) stop() {
 	s.stopping.Signal()
+}
+
+func (s *Watcher_) stopped() {
+	logs.Debugf("%v", s.target)
 }
 
 func (s *Watcher_) wait_stop() {

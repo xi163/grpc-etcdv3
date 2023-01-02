@@ -14,7 +14,6 @@ type Resolver struct {
 }
 
 func newResolver(target string) *Resolver {
-	logs.Tracef("%v", target)
 	return &Resolver{
 		target: target,
 	}
