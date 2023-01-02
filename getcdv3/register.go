@@ -36,13 +36,13 @@ func GetPrefix4Unique(schema, serviceName string) string {
 	return fmt.Sprintf("%s:///%s", schema, serviceName)
 }
 
-func RegisterEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName string, ttl int) error {
-	err := registerEtcd(schema, etcdAddr, myAddr, myPort, serviceName, ttl)
+func RegisterEtcd(schema, serviceName, myAddr string, myPort int, ttl int) error {
+	err := registerEtcd(schema, serviceName, myAddr, myPort, ttl)
 	if err != nil {
 		return err
 	}
 	serviceName = strings.Join([]string{serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, ":")
-	err = registerEtcd(schema, etcdAddr, myAddr, myPort, serviceName, ttl)
+	err = registerEtcd(schema, serviceName, myAddr, myPort, ttl)
 	if err != nil {
 		return err
 	}
@@ -57,16 +57,16 @@ func GetUniqueTarget(schema, serviceName, myAddr string, myPort int) string {
 	return strings.Join([]string{GetPrefix4Unique(schema, serviceName), ":", net.JoinHostPort(myAddr, strconv.Itoa(myPort)), "/"}, "")
 }
 
-func registerEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName string, ttl int) error {
+func registerEtcd(schema, serviceName, myAddr string, myPort int, ttl int) error {
 	serviceValue := net.JoinHostPort(myAddr, strconv.Itoa(myPort))
 	serviceKey := GetPrefix(schema, serviceName) + serviceValue
-	args := strings.Join([]string{schema, etcdAddr, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, " ")
+	args := strings.Join([]string{schema, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, " ")
 	ttl = ttl * 3
 	ctx, _ := context.WithCancel(context.Background())
 	// ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
-	etcds.Update(etcdAddr, func(v Clientv3) {
-		v.Delete(ctx, serviceKey)
-	})
+	// etcds.Update(etcdAddr, func(v Clientv3) {
+	// 	v.Delete(ctx, serviceKey)
+	// })
 	gresp, err := register.cli.Grant(ctx, int64(ttl))
 	switch err {
 	case nil:

@@ -6,13 +6,20 @@ import (
 
 	"github.com/cwloo/gonet/core/base/sys"
 	"github.com/cwloo/gonet/logs"
-	"github.com/cwloo/uploader/src/config"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 var (
 	etcds = newEtcds()
 )
+
+func Auth(username, password string) {
+	etcds.Auth(username, password)
+}
+
+func Update(etcdAddr string) {
+	etcds.Update(etcdAddr, func(v Clientv3) {})
+}
 
 // <summary>
 // Etcds
@@ -21,6 +28,7 @@ type Etcds interface {
 	Get() (cli Clientv3, e error)
 	Put(cli Clientv3)
 	Close(reset func(Clientv3))
+	Auth(username, password string)
 	Update(etcdAddr string, reset func(Clientv3))
 }
 
@@ -28,6 +36,8 @@ type Etcds interface {
 // etcds_
 // <summary>
 type etcds_ struct {
+	username string
+	password string
 	etcdAddr string
 	pool     sys.FreeValues
 }
@@ -36,6 +46,11 @@ func newEtcds() Etcds {
 	s := &etcds_{}
 	s.pool = *sys.NewFreeValuesWith(s.new)
 	return s
+}
+
+func (s *etcds_) Auth(username, password string) {
+	s.username = username
+	s.password = password
 }
 
 func (s *etcds_) Update(etcdAddr string, reset func(Clientv3)) {
@@ -79,8 +94,8 @@ func (s *etcds_) new(cb func(error, ...any)) (cli any, e error) {
 	c, err := clientv3.New(clientv3.Config{
 		Endpoints:   strings.Split(s.etcdAddr, ","),
 		DialTimeout: time.Duration(5) * time.Second,
-		Username:    config.Config.Etcd.UserName,
-		Password:    config.Config.Etcd.Password,
+		Username:    s.username,
+		Password:    s.password,
 	})
 	e = err
 	switch err {
