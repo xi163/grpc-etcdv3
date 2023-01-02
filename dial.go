@@ -44,7 +44,10 @@ func BalanceDial(unique bool, schema, etcdAddr, serviceName string) (conn *grpc.
 		case true:
 		}
 		logs.Debugf("%v", target)
-		ctx, _ := context.WithTimeout(context.Background(), time.Second*5)
+		ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+		etcds.Update(etcdAddr, func(v Clientv3) {
+			v.Delete(ctx, target)
+		})
 		opts := []grpc.DialOption{
 			grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, roundrobin.Name)),
 			grpc.WithChainStreamInterceptor(),

@@ -15,10 +15,7 @@ import (
 // GetBalanceConn
 func GetBalanceConn(schema, etcdAddr, serviceName string) (conn *grpc.ClientConn, err error) {
 	target := TargetString(false, schema, serviceName)
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
-	etcds.Update(etcdAddr, func(v Clientv3) {
-		v.Delete(ctx, target)
-	})
+
 	logs.Debugf("%v %v:%v", target, "BalanceDial")
 	conn, err = BalanceDial(false, schema, etcdAddr, serviceName)
 	switch err {
@@ -46,18 +43,12 @@ func GetConn(schema, etcdAddr, serviceName, myAddr string, myPort int) (conn *gr
 // GetConn
 func GetConnByHost(schema, etcdAddr, serviceName, myHost string) (conn *grpc.ClientConn, err error) {
 	target := TargetString(false, schema, serviceName)
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
-	etcds.Update(etcdAddr, func(v Clientv3) {
-		v.Delete(ctx, target)
-	})
 	conn, ok := rpcConns.Get(myHost)
 	switch ok {
 	case true:
-		target := TargetString(false, schema, serviceName)
 		logs.Debugf("%v %v:%v", target, "BalanceDialHost", myHost)
 		return conn, nil
 	default:
-		target := TargetString(false, schema, serviceName)
 		logs.Debugf("%v %v:%v", target, "BalanceDialHost", myHost)
 		conn, err = BalanceDialHost(false, schema, etcdAddr, serviceName, myHost)
 		switch err {

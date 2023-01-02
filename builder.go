@@ -83,7 +83,6 @@ func (s *Builder_) GetAdd(target string) (w Watcher, ok bool) {
 }
 
 func (s *Builder_) getAdd(target string) (w Watcher, ok bool) {
-	// logs.Debugf("%v begin size=%v", target, s.Len())
 	s.l.Lock()
 	w, ok = s.m[target]
 	switch ok {
@@ -94,7 +93,6 @@ func (s *Builder_) getAdd(target string) (w Watcher, ok bool) {
 		ok = true
 	}
 	s.l.Unlock()
-	// logs.Debugf("%v end size=%v", target, s.Len())
 	return
 }
 
@@ -183,7 +181,7 @@ func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.
 	default:
 		logs.Fatalf("error")
 	}
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	resp, err := watcher.Cli().Get(ctx, target, clientv3.WithPrefix())
 	switch err {
 	case nil:
@@ -210,7 +208,7 @@ func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.
 		logs.Fatalf("%v %v", target, err.Error())
 		return nil, errors.New(logs.SprintErrorf("%v %v", target, err.Error()))
 	}
-	return watcher.Resolver(), nil
+	return watcher.R(), nil
 }
 
 // Scheme

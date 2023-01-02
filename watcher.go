@@ -20,8 +20,8 @@ import (
 // <summary>
 type Watcher interface {
 	Cli() Client
+	R() *Resolver
 	Target() string
-	Resolver() *Resolver
 	Update(revision int64)
 	Watch(msg *WatcherMsg)
 	Close()
@@ -84,16 +84,16 @@ func newWatcher(target string, cb func(string, func(Watcher))) Watcher {
 	return s
 }
 
-func (s *Watcher_) Target() string {
-	return s.target
-}
-
 func (s *Watcher_) Cli() Client {
 	return s.cli
 }
 
-func (s *Watcher_) Resolver() *Resolver {
+func (s *Watcher_) R() *Resolver {
 	return s.r
+}
+
+func (s *Watcher_) Target() string {
+	return s.target
 }
 
 func (s *Watcher_) cleanup() {

@@ -62,7 +62,8 @@ func registerEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName strin
 	serviceKey := GetPrefix(schema, serviceName) + serviceValue
 	args := strings.Join([]string{schema, etcdAddr, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, " ")
 	ttl = ttl * 3
-	ctx, _ := context.WithCancel(context.Background())
+	// ctx, _ := context.WithCancel(context.Background())
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	etcds.Update(etcdAddr, func(v Clientv3) {
 		v.Delete(ctx, serviceKey)
 	})
@@ -90,7 +91,8 @@ func registerEtcd(schema, etcdAddr, myAddr string, myPort int, serviceName strin
 									select {
 									case <-t.C:
 									}
-									ctx, _ := context.WithCancel(context.Background())
+									// ctx, _ := context.WithCancel(context.Background())
+									ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 									gresp, err := register.cli.Grant(ctx, int64(ttl))
 									switch err {
 									case nil:

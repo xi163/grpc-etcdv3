@@ -103,10 +103,12 @@ RETRY:
 				s.Free()
 			}
 		default:
+			logs.Errorf(e.Error())
 			s.Close()
 			goto RETRY
 		}
 	default:
+		logs.Errorf(err.Error())
 	}
 	return
 }
@@ -134,10 +136,12 @@ RETRY:
 				s.Free()
 			}
 		default:
+			logs.Errorf(e.Error())
 			s.Close()
 			goto RETRY
 		}
 	default:
+		logs.Errorf(err.Error())
 	}
 	return
 }
@@ -174,10 +178,12 @@ RETRY:
 				s.Free()
 			}
 		default:
+			logs.Errorf(e.Error())
 			s.Close()
 			goto RETRY
 		}
 	default:
+		logs.Errorf(err.Error())
 	}
 	return
 }
@@ -205,10 +211,12 @@ RETRY:
 				s.Free()
 			}
 		default:
+			logs.Errorf(e.Error())
 			s.Close()
 			goto RETRY
 		}
 	default:
+		logs.Errorf(err.Error())
 	}
 	return
 }
@@ -236,10 +244,12 @@ RETRY:
 				s.Free()
 			}
 		default:
+			logs.Errorf(e.Error())
 			s.Close()
 			goto RETRY
 		}
 	default:
+		logs.Errorf(err.Error())
 	}
 	return
 }
@@ -269,6 +279,7 @@ func (s *client) watch(free bool, ctx context.Context, key string, opts ...clien
 			}
 		}
 	default:
+		logs.Errorf(err.Error())
 	}
 	return
 }
