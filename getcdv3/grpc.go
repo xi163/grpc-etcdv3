@@ -63,6 +63,7 @@ func GetConnByHost(schema, serviceName, myHost string) (conn *grpc.ClientConn, e
 				hostConn.TryAdd(myHost, conn)
 			default:
 				logs.Errorf(err.Error())
+				hostConn.Remove(myHost)
 			}
 		}
 	}
@@ -105,6 +106,7 @@ func GetConns(schema, serviceName string) (conns []*grpc.ClientConn) {
 							hostConn.TryAdd(host, r)
 						default:
 							logs.Errorf(err.Error())
+							hostConn.Remove(host)
 						}
 					}
 				default:
@@ -158,8 +160,8 @@ func GetConns(schema, serviceName string) (conns []*grpc.ClientConn) {
 								conns = append(conns, r)
 								hostConn.TryAdd(host, r)
 							default:
-								hostConn.Remove(host)
 								logs.Errorf(err.Error())
+								hostConn.Remove(host)
 							}
 						}
 					}
