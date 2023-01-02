@@ -8,6 +8,10 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+var (
+	cli = newClient()
+)
+
 // <summary>
 // Client
 // <summary>
