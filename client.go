@@ -286,7 +286,6 @@ func (s *client) free() {
 	switch s.cli {
 	case nil:
 	default:
-		// logs.Errorf("")
 		s.cli.Free()
 		s.cli = nil
 	}
@@ -306,7 +305,6 @@ func (s *client) close() {
 	switch s.cli {
 	case nil:
 	default:
-		// logs.Errorf("")
 		s.cli.Close()
 		s.cli = nil
 	}
