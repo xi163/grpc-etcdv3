@@ -15,7 +15,6 @@ import (
 // GetBalanceConn
 func GetBalanceConn(schema, etcdAddr, serviceName string) (conn *grpc.ClientConn, err error) {
 	target := TargetString(false, schema, serviceName)
-
 	logs.Debugf("%v %v:%v", target, "BalanceDial")
 	conn, err = BalanceDial(false, schema, etcdAddr, serviceName)
 	switch err {
