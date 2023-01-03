@@ -22,7 +22,7 @@ type Register struct {
 
 var (
 	register = Register{
-		cli: newClient(),
+		cli: newClient(true),
 	}
 )
 
@@ -73,7 +73,7 @@ func registerEtcd(schema, serviceName, myAddr string, myPort int, ttl int) error
 		_, err := register.cli.Put(ctx, serviceKey, serviceValue, clientv3.WithLease(gresp.ID))
 		switch err {
 		case nil:
-			kresp, err := register.cli.KeepAlive(ctx, gresp.ID)
+			kresp, err := register.cli.KeepAliveRelease(ctx, gresp.ID)
 			switch err {
 			case nil:
 				// logs.Infof("RegisterEtcd ok %v", args)

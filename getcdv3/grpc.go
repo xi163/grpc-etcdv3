@@ -78,6 +78,7 @@ func GetConns(schema, serviceName string) (conns []*grpc.ClientConn) {
 	// etcds.Update(etcdAddr, func(v Clientv3) {
 	// 	v.Delete(ctx, target)
 	// })
+	cli := newClient(false)
 	resp, err := cli.GetRelease(ctx, target, clientv3.WithPrefix())
 	switch err {
 	case nil:

@@ -162,6 +162,7 @@ func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.
 	default:
 		logs.Fatalf("error")
 	}
+	cli := newClient(false)
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	resp, err := cli.GetRelease(ctx, target, clientv3.WithPrefix())
 	switch err {

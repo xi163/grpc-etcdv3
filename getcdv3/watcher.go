@@ -67,7 +67,7 @@ type Watcher_ struct {
 
 func newWatcher(host, target string, cb func(string, func(Watcher))) Watcher {
 	s := &Watcher_{
-		cli:      newClient(),
+		cli:      newClient(false),
 		cb:       cb,
 		host:     host,
 		target:   target,

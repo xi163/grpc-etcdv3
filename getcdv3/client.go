@@ -8,10 +8,6 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-var (
-	cli = newClient()
-)
-
 // <summary>
 // Client
 // <summary>
@@ -42,20 +38,29 @@ type client struct {
 	l   *sync.RWMutex
 }
 
-func newClient() Client {
-	s := &client{l: &sync.RWMutex{}}
-	return s
+func newClient(lock bool) Client {
+	switch lock {
+	case true:
+		return &client{l: &sync.RWMutex{}}
+	default:
+		return &client{}
+	}
 }
 
 func (s *client) get_client() (cli Clientv3) {
-	s.l.RLock()
-	cli = s.cli
-	s.l.RUnlock()
+	switch s.l {
+	case nil:
+		cli = s.cli
+	default:
+		s.l.RLock()
+		cli = s.cli
+		s.l.RUnlock()
+	}
+
 	return
 }
 
-func (s *client) new_client() (cli Clientv3, err error) {
-	s.l.Lock()
+func (s *client) new_client_() (cli Clientv3, err error) {
 	switch s.cli {
 	case nil:
 		cli, err = etcds.Get()
@@ -66,7 +71,18 @@ func (s *client) new_client() (cli Clientv3, err error) {
 	default:
 		cli = s.cli
 	}
-	s.l.Unlock()
+	return
+}
+
+func (s *client) new_client() (cli Clientv3, err error) {
+	switch s.l {
+	case nil:
+		cli, err = s.new_client_()
+	default:
+		s.l.Lock()
+		cli, err = s.new_client_()
+		s.l.Unlock()
+	}
 	return
 }
 
@@ -281,15 +297,24 @@ func (s *client) watch(free bool, ctx context.Context, key string, opts ...clien
 	return
 }
 
-func (s *client) free() {
-	s.l.Lock()
+func (s *client) free_() {
 	switch s.cli {
 	case nil:
 	default:
 		s.cli.Free()
 		s.cli = nil
 	}
-	s.l.Unlock()
+}
+
+func (s *client) free() {
+	switch s.l {
+	case nil:
+		s.free_()
+	default:
+		s.l.Lock()
+		s.free_()
+		s.l.Unlock()
+	}
 }
 
 func (s *client) Free() {
@@ -300,15 +325,24 @@ func (s *client) Free() {
 	}
 }
 
-func (s *client) close() {
-	s.l.Lock()
+func (s *client) close_() {
 	switch s.cli {
 	case nil:
 	default:
 		s.cli.Close()
 		s.cli = nil
 	}
-	s.l.Unlock()
+}
+
+func (s *client) close() {
+	switch s.l {
+	case nil:
+		s.close_()
+	default:
+		s.l.Lock()
+		s.close_()
+		s.l.Unlock()
+	}
 }
 
 func (s *client) Close() {
