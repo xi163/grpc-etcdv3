@@ -8,7 +8,7 @@ import (
 
 	"github.com/cwloo/gonet/logs"
 	"github.com/cwloo/grpc-etcdv3/getcdv3/gRPCs"
-	pb_public "github.com/cwloo/grpc-etcdv3/getcdv3/proto"
+	pb_getcdv3 "github.com/cwloo/grpc-etcdv3/getcdv3/proto"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 )
@@ -21,8 +21,8 @@ func GetBalanceConn(schema, serviceName string) (conn gRPCs.ClientConn, e error)
 	e = err
 	switch err {
 	case nil:
-		client := pb_public.NewPeerClient(c)
-		req := &pb_public.PeerReq{}
+		client := pb_getcdv3.NewPeerClient(c)
+		req := &pb_getcdv3.PeerReq{}
 		resp, err := client.GetAddr(context.Background(), req)
 		switch err {
 		case nil:
@@ -58,7 +58,7 @@ func GetConnByHost(schema, serviceName, host string) (conn gRPCs.ClientConn, err
 	clients, ok := gRPCs.Conns().GetAdd(target)
 	switch ok {
 	case true:
-		logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
+		// logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
 		clients.GetAdd(false, schema, serviceName, host, BalanceDialHost)
 		conn, err = clients.GetConn(host)
 	default:
@@ -81,7 +81,7 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 	case nil:
 		hosts := map[string]bool{}
 		for i := range resp.Kvs {
-			// logs.Debugf("%v %v => %v", target, string(resp.Kvs[i].Key), string(resp.Kvs[i].Value))
+			// logs.Debugf("%v => %v", target, string(resp.Kvs[i].Value))
 			hosts[string(resp.Kvs[i].Value)] = true
 		}
 		gRPCs.Conns().Update(target, hosts)
@@ -126,8 +126,8 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 							c, err := BalanceDial(false, schema, serviceName)
 							switch err {
 							case nil:
-								client := pb_public.NewPeerClient(c)
-								req := &pb_public.PeerReq{}
+								client := pb_getcdv3.NewPeerClient(c)
+								req := &pb_getcdv3.PeerReq{}
 								resp, err := client.GetAddr(context.Background(), req)
 								switch err {
 								case nil:
@@ -149,7 +149,7 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 						}
 					default:
 						for host := range hosts {
-							logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
+							// logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
 							clients.GetAdd(false, schema, serviceName, host, BalanceDialHost)
 						}
 						c, _ := clients.GetConns(hosts)

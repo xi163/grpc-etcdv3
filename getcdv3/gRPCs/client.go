@@ -44,7 +44,7 @@ func (s *clientConn) Free() {
 		case nil:
 			s.close()
 		default:
-			logs.Tracef("%v %v %v", s.rpc.Schema(), s.rpc.Node(), s.rpc.Host())
+			// logs.Tracef("%v %v %v", s.rpc.Schema(), s.rpc.Node(), s.rpc.Host())
 			s.rpc.Put(s)
 		}
 	}

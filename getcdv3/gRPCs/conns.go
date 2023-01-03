@@ -74,7 +74,7 @@ func (s *conns) Update(target string, hosts map[string]bool) {
 	case true:
 		switch conns.Update(hosts) {
 		case true:
-			s.List()
+			// s.List()
 		}
 	default:
 	}
@@ -135,19 +135,23 @@ func (s *conns) Remove(target string) {
 	_, ok := s.Get(target)
 	switch ok {
 	case true:
-		s.remove(target)
+		switch s.remove(target) {
+		case true:
+			// s.List()
+		}
 	default:
 	}
 }
 
-func (s *conns) remove(target string) {
+func (s *conns) remove(target string) (ok bool) {
 	s.l.Lock()
-	_, ok := s.m[target]
+	_, ok = s.m[target]
 	switch ok {
 	case true:
 		delete(s.m, target)
 	}
 	s.l.Unlock()
+	return
 }
 
 func (s *conns) RemoveBy(err error) {

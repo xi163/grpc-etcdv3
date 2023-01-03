@@ -14,6 +14,7 @@ import (
 // Clients [host]=RPCs
 // <summary>
 type Clients interface {
+	List()
 	Len() (c int)
 	Range(cb func(string, RPCs) bool)
 	GetByAddr(addr string, port int) (p RPCs, ok bool)
@@ -65,6 +66,15 @@ func (s *clients) Range(cb func(string, RPCs) bool) {
 	s.l.RUnlock()
 }
 
+func (s *clients) List() {
+	logs.Errorf("------------------------------- %v", s.target)
+	s.Range(func(host string, c RPCs) bool {
+		logs.Errorf("%v", host)
+		return true
+	})
+	logs.Errorf("-------------------------------")
+}
+
 func (s *clients) GetByAddr(addr string, port int) (c RPCs, ok bool) {
 	c, ok = s.Get(net.JoinHostPort(addr, strconv.Itoa(port)))
 	return
@@ -106,15 +116,21 @@ func (s *clients) getAdd(unique bool, schema, node, host string, dial Dial) (c R
 	return
 }
 
-func (s *clients) remove(host string) (c int, ok bool) {
+func (s *clients) remove(host string, reset func(RPCs)) (c int, rpc RPCs, ok bool) {
 	s.l.Lock()
-	_, ok = s.m[host]
+	rpc, ok = s.m[host]
 	switch ok {
 	case true:
 		delete(s.m, host)
+		c = len(s.m)
+		s.l.Unlock()
+		goto OK
 	}
 	c = len(s.m)
 	s.l.Unlock()
+	return
+OK:
+	reset(rpc)
 	return
 }
 
@@ -123,25 +139,37 @@ func (s *clients) RemoveByAddr(addr string, port int) {
 }
 
 func (s *clients) Remove(host string) (ok bool) {
+	_, ok = s.remove_(host)
+	return
+}
+
+func (s *clients) remove_(host string) (c int, ok bool) {
 	_, ok = s.Get(host)
 	switch ok {
 	case true:
-		c, OK := s.remove(host)
-		ok = OK
-		switch c {
-		case 0:
-			s.cb(s.target)
+		c, _, ok = s.remove(host, func(rpc RPCs) {
+			rpc.Close(func(_ ClientConn) {})
+		})
+		switch ok {
+		case true:
+			// s.List()
+			switch c {
+			case 0:
+				s.cb(s.target)
+			}
 		}
 	default:
 	}
 	return
 }
 
-func (s *clients) RangeRemoveWithCond(cb func(string, RPCs) bool) (update bool) {
+func (s *clients) RangeRemoveWithCond(cb func(string, RPCs) bool, reset func([]RPCs)) (update bool) {
+	rpcs := []RPCs{}
 	s.l.Lock()
-	for host, c := range s.m {
-		switch cb(host, c) {
+	for host, rpc := range s.m {
+		switch cb(host, rpc) {
 		case true:
+			rpcs = append(rpcs, rpc)
 			delete(s.m, host)
 			update = true
 		}
@@ -150,6 +178,8 @@ func (s *clients) RangeRemoveWithCond(cb func(string, RPCs) bool) (update bool) 
 	s.l.Unlock()
 	switch update {
 	case true:
+		reset(rpcs)
+		// s.List()
 		switch c {
 		case 0:
 			s.cb(s.target)
@@ -162,6 +192,10 @@ func (s *clients) Update(hosts map[string]bool) bool {
 	return s.RangeRemoveWithCond(func(host string, _ RPCs) bool {
 		_, ok := hosts[host]
 		return !ok
+	}, func(rpcs []RPCs) {
+		for _, rpc := range rpcs {
+			rpc.Close(func(_ ClientConn) {})
+		}
 	})
 }
 
@@ -178,7 +212,7 @@ func (s *clients) GetConn(host string) (c ClientConn, err error) {
 		switch err {
 		case nil:
 		default:
-			logs.Errorf(err.Error())
+			// logs.Errorf(err.Error())
 			s.Remove(host)
 		}
 	default:
@@ -200,7 +234,7 @@ func (s *clients) GetConns(hosts map[string]bool) (conns []ClientConn, slice map
 			case nil:
 				conns = append(conns, c)
 			default:
-				logs.Errorf(err.Error())
+				// logs.Errorf(err.Error())
 				remove[host] = true
 			}
 		default:

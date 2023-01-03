@@ -1,7 +1,6 @@
 package getcdv3
 
 import (
-	"github.com/cwloo/gonet/logs"
 	grpc_resolver "google.golang.org/grpc/resolver"
 )
 
@@ -25,5 +24,5 @@ func (s *Resolver) ResolveNow(rn grpc_resolver.ResolveNowOptions) {
 
 // Close
 func (s *Resolver) Close() {
-	logs.Errorf("%v", s.target)
+	// logs.Errorf("%v", s.target)
 }

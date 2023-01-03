@@ -67,6 +67,7 @@ func (s *etcds_) Update(etcdAddr string, reset func(Clientv3)) {
 		default:
 		}
 		s.etcdAddr = etcdAddr
+		logs.Debugf("%v", etcdAddr)
 		s.pool.Update(func(value any, cb func(error, ...any)) (e error) {
 			client := *value.(*Clientv3)
 			client.Cancel()
