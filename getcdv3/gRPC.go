@@ -16,7 +16,6 @@ import (
 // GetBalanceConn
 func GetBalanceConn(schema, serviceName string) (conn gRPCs.ClientConn, e error) {
 	target := TargetString(false, schema, serviceName)
-	// logs.Debugf("%v %v:%v", target, "BalanceDial")
 	c, err := BalanceDial(false, schema, serviceName)
 	e = err
 	switch err {
@@ -58,7 +57,6 @@ func GetConnByHost(schema, serviceName, host string) (conn gRPCs.ClientConn, err
 	clients, ok := gRPCs.Conns().GetAdd(target)
 	switch ok {
 	case true:
-		// logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
 		clients.GetAdd(false, schema, serviceName, host, BalanceDialHost)
 		conn, err = clients.GetConn(host)
 	default:
@@ -70,7 +68,6 @@ func GetConnByHost(schema, serviceName, host string) (conn gRPCs.ClientConn, err
 // GetConns
 func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 	target := TargetString(false, schema, serviceName)
-	// logs.Debugf("%v", target)
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	// etcds.Update(etcdAddr, func(v Clientv3) {
 	// 	v.Delete(ctx, target)
@@ -118,13 +115,11 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 							switch i >= 20 {
 							case true:
 								for host, c := range m {
-									// logs.Debugf("c=%v %v", i, host)
 									conn := clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c)
 									conns = append(conns, conn)
 								}
 								return
 							}
-							// logs.Debugf("%v %v:%v", target, "BalanceDial")
 							c, err := BalanceDial(false, schema, serviceName)
 							switch err {
 							case nil:
@@ -137,7 +132,6 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 									switch len(m) == len(hosts) {
 									case true:
 										for host, c := range m {
-											// logs.Debugf("c=%v %v", i, host)
 											conn := clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c)
 											conns = append(conns, conn)
 										}
@@ -152,7 +146,6 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 						}
 					default:
 						for host := range hosts {
-							// logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
 							clients.GetAdd(false, schema, serviceName, host, BalanceDialHost)
 						}
 						c, _ := clients.GetConns(hosts)

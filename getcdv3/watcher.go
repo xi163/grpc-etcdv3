@@ -190,7 +190,6 @@ func (s *Watcher_) watching() (exit bool) {
 		s.target,
 		clientv3.WithPrefix(),
 		clientv3.WithPrefix()))
-	// logs.Warnf("end %v", s.target)
 	return
 }
 
@@ -220,7 +219,6 @@ EXIT:
 func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 	select { // block here
 	case resp := <-watchChan:
-		// logs.Warnf("begin %v", s.target)
 		EXIT := s.pick()
 		for _, ev := range resp.Events {
 			switch ev.Type {

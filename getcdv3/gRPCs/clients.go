@@ -212,7 +212,6 @@ func (s *clients) GetConn(host string) (c ClientConn, err error) {
 		switch err {
 		case nil:
 		default:
-			// logs.Errorf(err.Error())
 			s.Remove(host)
 		}
 	default:
@@ -234,7 +233,6 @@ func (s *clients) GetConns(hosts map[string]bool) (conns []ClientConn, slice map
 			case nil:
 				conns = append(conns, c)
 			default:
-				// logs.Errorf(err.Error())
 				remove[host] = true
 			}
 		default:

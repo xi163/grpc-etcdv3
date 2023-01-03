@@ -169,7 +169,6 @@ func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.
 	case nil:
 		switch len(resp.Kvs) {
 		case 0:
-			logs.Errorf("%v", target)
 			// s.Remove(target)
 		default:
 			var addrs []grpc_resolver.Address
