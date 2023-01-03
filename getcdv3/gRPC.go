@@ -99,7 +99,8 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 						c, err := DirectDialHost(schema, serviceName, host)
 						switch err {
 						case nil:
-							conns = append(conns, clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c))
+							conn := clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c)
+							conns = append(conns, conn)
 						default:
 							logs.Errorf(err.Error())
 							clients.Remove(host)
@@ -118,7 +119,8 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 							case true:
 								for host, c := range m {
 									// logs.Debugf("c=%v %v", i, host)
-									conns = append(conns, clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c))
+									conn := clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c)
+									conns = append(conns, conn)
 								}
 								return
 							}
@@ -136,7 +138,8 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 									case true:
 										for host, c := range m {
 											// logs.Debugf("c=%v %v", i, host)
-											conns = append(conns, clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c))
+											conn := clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c)
+											conns = append(conns, conn)
 										}
 										return
 									}
