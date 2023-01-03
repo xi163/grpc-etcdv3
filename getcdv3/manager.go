@@ -14,7 +14,7 @@ var (
 )
 
 // <summary>
-// Manager
+// Manager [schema]=Builder
 // <summary>
 type Manager interface {
 	Len() (c int)

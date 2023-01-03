@@ -19,7 +19,6 @@ type Clientv3 interface {
 	Put(ctx context.Context, key string, val string, opts ...clientv3.OpOption) (*clientv3.PutResponse, error)
 	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan
 	Cancel()
-	Free()
 	Close()
 }
 
@@ -85,14 +84,6 @@ func (s *clientv3_) Put(ctx context.Context, key string, val string, opts ...cli
 func (s *clientv3_) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
 	s.assert()
 	return s.cli.Watch(ctx, key, opts...)
-}
-
-func (s *clientv3_) Free() {
-	switch s.cli {
-	case nil:
-	default:
-		etcds.Put(s)
-	}
 }
 
 func (s *clientv3_) Close() {

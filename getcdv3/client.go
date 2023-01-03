@@ -301,7 +301,7 @@ func (s *client) free_() {
 	switch s.cli {
 	case nil:
 	default:
-		s.cli.Free()
+		etcds.Put(s.cli)
 		s.cli = nil
 	}
 }

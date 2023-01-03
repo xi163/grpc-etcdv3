@@ -16,7 +16,7 @@ import (
 )
 
 // <summary>
-// Builder
+// Builder [host]=Watcher
 // <summary>
 type Builder interface {
 	grpc_resolver.Builder

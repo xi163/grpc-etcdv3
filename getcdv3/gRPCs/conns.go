@@ -1,4 +1,4 @@
-package getcdv3
+package gRPCs
 
 import (
 	"net"
@@ -6,12 +6,15 @@ import (
 	"sync"
 
 	"github.com/cwloo/gonet/logs"
-	"google.golang.org/grpc"
 )
 
 var (
-	rpcConns = newRpcConns()
+	rpcConns = newConns()
 )
+
+func Conns() RpcConns {
+	return rpcConns
+}
 
 func RemoveBy(err error) {
 	cache := true
@@ -23,39 +26,40 @@ func RemoveBy(err error) {
 }
 
 // <summary>
-// RpcConns
+// RpcConns [target]=Clients
 // <summary>
 type RpcConns interface {
 	Len() (c int)
-	Range(cb func(string, Conns) bool)
-	Get(target string) (conns Conns, ok bool)
-	GetAdd(target string) (conns Conns, ok bool)
+	Range(cb func(string, Clients) bool)
+	Get(target string) (c Clients, ok bool)
+	GetAdd(target string) (c Clients, ok bool)
 	Update(target string, hosts map[string]bool)
 	Remove(target string)
 	RemoveBy(err error)
+	Close()
 	List()
 }
 
 // <summary>
-// RpcConns_
+// conns
 // <summary>
-type RpcConns_ struct {
+type conns struct {
 	l *sync.RWMutex
-	m map[string]Conns
+	m map[string]Clients
 }
 
-func newRpcConns() RpcConns {
-	s := &RpcConns_{
-		m: map[string]Conns{},
+func newConns() RpcConns {
+	s := &conns{
+		m: map[string]Clients{},
 		l: &sync.RWMutex{},
 	}
 	return s
 }
 
-func (s *RpcConns_) List() {
-	s.Range(func(target string, conns Conns) bool {
+func (s *conns) List() {
+	s.Range(func(target string, clients Clients) bool {
 		logs.Errorf("------------------------------- %v", target)
-		conns.Range(func(host string, conn *grpc.ClientConn) bool {
+		clients.Range(func(host string, c RPCs) bool {
 			logs.Errorf("%v", host)
 			return true
 		})
@@ -64,7 +68,7 @@ func (s *RpcConns_) List() {
 	})
 }
 
-func (s *RpcConns_) Update(target string, hosts map[string]bool) {
+func (s *conns) Update(target string, hosts map[string]bool) {
 	conns, ok := s.Get(target)
 	switch ok {
 	case true:
@@ -76,14 +80,14 @@ func (s *RpcConns_) Update(target string, hosts map[string]bool) {
 	}
 }
 
-func (s *RpcConns_) Len() (c int) {
+func (s *conns) Len() (c int) {
 	s.l.RLock()
 	c = len(s.m)
 	s.l.RUnlock()
 	return
 }
 
-func (s *RpcConns_) Range(cb func(string, Conns) bool) {
+func (s *conns) Range(cb func(string, Clients) bool) {
 	s.l.RLock()
 	for target, conns := range s.m {
 		switch cb(target, conns) {
@@ -96,38 +100,38 @@ func (s *RpcConns_) Range(cb func(string, Conns) bool) {
 	s.l.RUnlock()
 }
 
-func (s *RpcConns_) Get(target string) (conns Conns, ok bool) {
+func (s *conns) Get(target string) (c Clients, ok bool) {
 	s.l.RLock()
-	conns, ok = s.m[target]
+	c, ok = s.m[target]
 	s.l.RUnlock()
 	return
 }
 
-func (s *RpcConns_) GetAdd(target string) (conns Conns, ok bool) {
-	conns, ok = s.Get(target)
+func (s *conns) GetAdd(target string) (c Clients, ok bool) {
+	c, ok = s.Get(target)
 	switch ok {
 	case true:
 	default:
-		conns, ok = s.getAdd(target)
+		c, ok = s.getAdd(target)
 	}
 	return
 }
 
-func (s *RpcConns_) getAdd(target string) (conns Conns, ok bool) {
+func (s *conns) getAdd(target string) (c Clients, ok bool) {
 	s.l.Lock()
-	conns, ok = s.m[target]
+	c, ok = s.m[target]
 	switch ok {
 	case true:
 	default:
-		conns = newConns(target, s.Remove)
-		s.m[target] = conns
+		c = newClients(target, s.Remove)
+		s.m[target] = c
 		ok = true
 	}
 	s.l.Unlock()
 	return
 }
 
-func (s *RpcConns_) Remove(target string) {
+func (s *conns) Remove(target string) {
 	_, ok := s.Get(target)
 	switch ok {
 	case true:
@@ -136,7 +140,7 @@ func (s *RpcConns_) Remove(target string) {
 	}
 }
 
-func (s *RpcConns_) remove(target string) {
+func (s *conns) remove(target string) {
 	s.l.Lock()
 	_, ok := s.m[target]
 	switch ok {
@@ -146,7 +150,7 @@ func (s *RpcConns_) remove(target string) {
 	s.l.Unlock()
 }
 
-func (s *RpcConns_) RemoveBy(err error) {
+func (s *conns) RemoveBy(err error) {
 	switch err {
 	case nil:
 	default:
@@ -167,9 +171,22 @@ func (s *RpcConns_) RemoveBy(err error) {
 		switch host {
 		case "":
 		default:
-			s.Range(func(target string, conns Conns) bool {
+			s.Range(func(target string, conns Clients) bool {
 				return !conns.Remove(host)
 			})
 		}
 	}
+}
+
+func (s *conns) Close() {
+	s.Range(func(target string, clients Clients) bool {
+		logs.Errorf("------------------------------- %v", target)
+		clients.Range(func(host string, c RPCs) bool {
+			logs.Errorf("%v", host)
+			c.Close(func(c ClientConn) {})
+			return true
+		})
+		logs.Errorf("-------------------------------")
+		return true
+	})
 }

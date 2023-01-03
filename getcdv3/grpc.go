@@ -7,30 +7,36 @@ import (
 	"time"
 
 	"github.com/cwloo/gonet/logs"
+	"github.com/cwloo/grpc-etcdv3/getcdv3/gRPCs"
 	pb_public "github.com/cwloo/grpc-etcdv3/getcdv3/proto"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 )
 
 // GetBalanceConn
-func GetBalanceConn(schema, serviceName string) (conn *grpc.ClientConn, err error) {
+func GetBalanceConn(schema, serviceName string) (conn gRPCs.ClientConn, e error) {
 	target := TargetString(false, schema, serviceName)
 	// logs.Debugf("%v %v:%v", target, "BalanceDial")
-	conn, err = BalanceDial(false, schema, serviceName)
+	c, err := BalanceDial(false, schema, serviceName)
+	e = err
 	switch err {
 	case nil:
-		client := pb_public.NewPeerClient(conn)
+		client := pb_public.NewPeerClient(c)
 		req := &pb_public.PeerReq{}
-		resp, e := client.GetAddr(context.Background(), req)
-		switch e {
+		resp, err := client.GetAddr(context.Background(), req)
+		switch err {
 		case nil:
-			hostConn, ok := rpcConns.GetAdd(target)
+			gRPCs.Conns().Update(target, map[string]bool{resp.Addr: true})
+			clients, ok := gRPCs.Conns().GetAdd(target)
 			switch ok {
 			case true:
-				hostConn.TryAdd(resp.Addr, conn)
+				conn = clients.AddConn(false, schema, serviceName, resp.Addr, BalanceDialHost, c)
+			default:
+				logs.Fatalf("error")
 			}
 		default:
 			logs.Errorf(e.Error())
+			conn = gRPCs.NewClientConn(c)
 			return
 		}
 	default:
@@ -40,38 +46,29 @@ func GetBalanceConn(schema, serviceName string) (conn *grpc.ClientConn, err erro
 }
 
 // GetConn
-func GetConn(schema, serviceName, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
-	return GetConnByHost(schema, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
+func GetConn(schema, serviceName, myAddr string, myPort int) (conn gRPCs.ClientConn, err error) {
+	conn, err = GetConnByHost(schema, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
+	return
 }
 
 // GetConn
-func GetConnByHost(schema, serviceName, myHost string) (conn *grpc.ClientConn, err error) {
+func GetConnByHost(schema, serviceName, host string) (conn gRPCs.ClientConn, err error) {
 	target := TargetString(false, schema, serviceName)
-	hostConn, ok := rpcConns.GetAdd(target)
+	gRPCs.Conns().Update(target, map[string]bool{host: true})
+	clients, ok := gRPCs.Conns().GetAdd(target)
 	switch ok {
 	case true:
-		conn, ok = hostConn.Get(myHost)
-		switch ok {
-		case true:
-			// logs.Debugf("%v %v:%v", target, "BalanceDialHost", myHost)
-			return conn, nil
-		default:
-			// logs.Debugf("%v %v:%v", target, "BalanceDialHost", myHost)
-			conn, err = BalanceDialHost(false, schema, serviceName, myHost)
-			switch err {
-			case nil:
-				hostConn.TryAdd(myHost, conn)
-			default:
-				logs.Errorf(err.Error())
-				hostConn.Remove(myHost)
-			}
-		}
+		logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
+		clients.GetAdd(false, schema, serviceName, host, BalanceDialHost)
+		conn, err = clients.GetConn(host)
+	default:
+		logs.Fatalf("error")
 	}
 	return
 }
 
 // GetConns
-func GetConns(schema, serviceName string) (conns []*grpc.ClientConn) {
+func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 	target := TargetString(false, schema, serviceName)
 	// logs.Debugf("%v", target)
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
@@ -87,12 +84,11 @@ func GetConns(schema, serviceName string) (conns []*grpc.ClientConn) {
 			// logs.Debugf("%v %v => %v", target, string(resp.Kvs[i].Key), string(resp.Kvs[i].Value))
 			hosts[string(resp.Kvs[i].Value)] = true
 		}
-		// array := hosts
-		rpcConns.Update(target, hosts)
-		hostConn, ok := rpcConns.GetAdd(target)
+		gRPCs.Conns().Update(target, hosts)
+		clients, ok := gRPCs.Conns().GetAdd(target)
 		switch ok {
 		case true:
-			conns, hosts = hostConn.GetConns(hosts)
+			conns, hosts = clients.GetConns(hosts)
 			switch len(hosts) > 0 {
 			case true:
 				// directDial
@@ -100,14 +96,13 @@ func GetConns(schema, serviceName string) (conns []*grpc.ClientConn) {
 				switch directDial {
 				case true:
 					for host := range hosts {
-						r, err := DirectDialHost(schema, serviceName, host)
+						c, err := DirectDialHost(schema, serviceName, host)
 						switch err {
 						case nil:
-							conns = append(conns, r)
-							hostConn.TryAdd(host, r)
+							conns = append(conns, clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c))
 						default:
 							logs.Errorf(err.Error())
-							hostConn.Remove(host)
+							clients.Remove(host)
 						}
 					}
 				default:
@@ -121,32 +116,32 @@ func GetConns(schema, serviceName string) (conns []*grpc.ClientConn) {
 							i++
 							switch i >= 20 {
 							case true:
-								for addr, r := range m {
-									logs.Debugf("c=%v %v", i, addr)
-									conns = append(conns, r)
-									hostConn.TryAdd(addr, r)
+								for host, c := range m {
+									// logs.Debugf("c=%v %v", i, host)
+									conns = append(conns, clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c))
 								}
 								return
 							}
 							// logs.Debugf("%v %v:%v", target, "BalanceDial")
-							r, err := BalanceDial(false, schema, serviceName)
+							c, err := BalanceDial(false, schema, serviceName)
 							switch err {
 							case nil:
-								client := pb_public.NewPeerClient(r)
+								client := pb_public.NewPeerClient(c)
 								req := &pb_public.PeerReq{}
 								resp, err := client.GetAddr(context.Background(), req)
-								if err != nil {
-									logs.Errorf(err.Error())
-									continue
-								}
-								m[resp.Addr] = r
-								if len(m) == len(hosts) {
-									for addr, r := range m {
-										// logs.Debugf("c=%v %v", i, addr)
-										conns = append(conns, r)
-										hostConn.TryAdd(addr, r)
+								switch err {
+								case nil:
+									m[resp.Addr] = c
+									switch len(m) == len(hosts) {
+									case true:
+										for host, c := range m {
+											// logs.Debugf("c=%v %v", i, host)
+											conns = append(conns, clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c))
+										}
+										return
 									}
-									return
+								default:
+									logs.Errorf(err.Error())
 								}
 							default:
 								logs.Errorf(err.Error())
@@ -154,21 +149,14 @@ func GetConns(schema, serviceName string) (conns []*grpc.ClientConn) {
 						}
 					default:
 						for host := range hosts {
-							// logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
-							r, err := BalanceDialHost(false, schema, serviceName, host)
-							switch err {
-							case nil:
-								conns = append(conns, r)
-								hostConn.TryAdd(host, r)
-							default:
-								logs.Errorf(err.Error())
-								hostConn.Remove(host)
-							}
+							logs.Debugf("%v %v:%v", target, "BalanceDialHost", host)
+							clients.GetAdd(false, schema, serviceName, host, BalanceDialHost)
 						}
+						c, _ := clients.GetConns(hosts)
+						conns = append(conns, c...)
 					}
 				}
 			default:
-				// logs.Debugf("%v %v%v", target, "GetConnsByHost", Slice(array))
 			}
 		}
 	default:

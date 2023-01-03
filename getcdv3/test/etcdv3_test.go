@@ -5,6 +5,7 @@ import (
 
 	"github.com/cwloo/gonet/logs"
 	getcdv3 "github.com/cwloo/grpc-etcdv3/getcdv3"
+	"github.com/cwloo/grpc-etcdv3/getcdv3/gRPCs"
 )
 
 func TestMain(m *testing.M) {
@@ -18,7 +19,8 @@ func Test(t *testing.T) {
 	conn, err := getcdv3.GetBalanceConn("uploader", "file_server")
 	switch err {
 	case nil:
-		logs.Debugf("%v", conn.Target())
+		logs.Debugf("%v", conn.Conn().Target())
+		conn.Free()
 	default:
 		logs.Errorf(err.Error())
 	}
@@ -26,13 +28,17 @@ func Test(t *testing.T) {
 	conn, err = getcdv3.GetConn("uploader", "file_server", "192.168.0.113", 5239)
 	switch err {
 	case nil:
-		logs.Debugf("%v", conn.Target())
+		logs.Debugf("%v", conn.Conn().Target())
+		conn.Free()
 	default:
 		logs.Errorf(err.Error())
 	}
 
 	rpcConns := getcdv3.GetConns("uploader", "file_server")
 	logs.Debugf("len=%v", len(rpcConns))
-
+	for _, conn := range rpcConns {
+		conn.Free()
+	}
+	gRPCs.Conns().Close()
 	logs.Close()
 }

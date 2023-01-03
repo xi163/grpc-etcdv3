@@ -10,6 +10,7 @@ import (
 	"github.com/cwloo/gonet/core/base/mq"
 	"github.com/cwloo/gonet/core/base/mq/lq"
 	"github.com/cwloo/gonet/logs"
+	"github.com/cwloo/grpc-etcdv3/getcdv3/gRPCs"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	grpc_resolver "google.golang.org/grpc/resolver"
@@ -248,17 +249,17 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 					switch ok {
 					case true:
 						logs.Debugf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
-						hostConn, ok := rpcConns.Get(s.target)
+						clients, ok := gRPCs.Conns().Get(s.target)
 						switch ok {
 						case true:
-							hostConn.Remove(host)
+							clients.Remove(host)
 						default:
 							unique, schema, serviceName, _ := TargetToHost(s.target)
 							target := TargetString(unique, schema, serviceName)
-							hostConn, ok := rpcConns.Get(target)
+							clients, ok := gRPCs.Conns().Get(target)
 							switch ok {
 							case true:
-								hostConn.Remove(host)
+								clients.Remove(host)
 							default:
 								logs.Fatalf("error")
 							}
@@ -275,17 +276,17 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 						s.stop()
 					default:
 						logs.Errorf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
-						hostConn, ok := rpcConns.Get(s.target)
+						clients, ok := gRPCs.Conns().Get(s.target)
 						switch ok {
 						case true:
-							hostConn.Remove(host)
+							clients.Remove(host)
 						default:
 							unique, schema, serviceName, _ := TargetToHost(s.target)
 							target := TargetString(unique, schema, serviceName)
-							hostConn, ok := rpcConns.Get(target)
+							clients, ok := gRPCs.Conns().Get(target)
 							switch ok {
 							case true:
-								hostConn.Remove(host)
+								clients.Remove(host)
 							default:
 								logs.Fatalf("error")
 							}
