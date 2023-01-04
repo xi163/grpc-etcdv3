@@ -51,16 +51,17 @@ type WatcherMsg struct {
 type Watcher_ struct {
 	// we can't inherit from grpc_resolver.Resolver, if do so,
 	// grpc_resolver.Resolver.Close() will destroy Watcher_, then it will be unpredictable !
+	watched  bool
 	cli      Client
 	revision int64
 	host     string
 	target   string
-	watched  bool
 	mq       mq.Queue
 	l        *sync.Mutex
 	cond     *sync.Cond
 	stopping cc.Singal
 	flag     cc.AtomFlag
+	cancel   cc.AtomFlag
 	hosts    map[string]bool
 	cc       map[grpc_resolver.ClientConn]bool
 	cb       func(string, func(Watcher))
@@ -74,6 +75,7 @@ func newWatcher(host, target string, cb func(string, func(Watcher))) Watcher {
 		target:   target,
 		l:        &sync.Mutex{},
 		flag:     cc.NewAtomFlag(),
+		cancel:   cc.NewAtomFlag(),
 		stopping: cc.NewSingal(),
 		hosts:    map[string]bool{},
 		cc:       map[grpc_resolver.ClientConn]bool{},
@@ -226,8 +228,10 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 				_, ok := s.hosts[string(ev.Kv.Value)]
 				switch ok {
 				case true:
+					s.cancel.TestSet()
 					logs.Errorf("<PUT> %v builder:%+v watch:%v", s.target, s.hosts, string(ev.Kv.Value))
 				default:
+					s.cancel.TestSet()
 					logs.Debugf("<PUT> %v builder:%+v watch:%v", s.target, s.hosts, string(ev.Kv.Value))
 					hosts := []grpc_resolver.Address{}
 					for host := range s.hosts {
@@ -246,6 +250,7 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 					_, ok := s.hosts[host]
 					switch ok {
 					case true:
+						s.cancel.TestReset()
 						logs.Debugf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
 						clients, ok := gRPCs.Conns().Get(s.target)
 						switch ok {
@@ -273,6 +278,7 @@ func (s *Watcher_) watch_handler(watchChan clientv3.WatchChan) (exit bool) {
 						s.cb(s.host, func(_ Watcher) {})
 						s.stop()
 					default:
+						s.cancel.TestReset()
 						logs.Errorf("<DELETE> %v %v => %v", s.target, string(ev.Kv.Key), host)
 						clients, ok := gRPCs.Conns().Get(s.target)
 						switch ok {
@@ -348,7 +354,11 @@ func (s *Watcher_) wait() {
 }
 
 func (s *Watcher_) stop() {
-	s.stopping.Signal()
+	switch s.cancel.IsSet() {
+	case true:
+	default:
+		s.stopping.Signal()
+	}
 }
 
 func (s *Watcher_) stopped() {

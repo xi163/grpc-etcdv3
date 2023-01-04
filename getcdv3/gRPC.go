@@ -25,7 +25,7 @@ func GetBalanceConn(schema, serviceName string) (conn gRPCs.ClientConn, e error)
 		resp, err := client.GetAddr(context.Background(), req)
 		switch err {
 		case nil:
-			gRPCs.Conns().Update(target, map[string]bool{resp.Addr: true})
+			// gRPCs.Conns().Update(target, map[string]bool{resp.Addr: true})
 			clients, ok := gRPCs.Conns().GetAdd(target)
 			switch ok {
 			case true:
@@ -53,7 +53,7 @@ func GetConn(schema, serviceName, myAddr string, myPort int) (conn gRPCs.ClientC
 // GetConn
 func GetConnByHost(schema, serviceName, host string) (conn gRPCs.ClientConn, err error) {
 	target := TargetString(false, schema, serviceName)
-	gRPCs.Conns().Update(target, map[string]bool{host: true})
+	// gRPCs.Conns().Update(target, map[string]bool{host: true})
 	clients, ok := gRPCs.Conns().GetAdd(target)
 	switch ok {
 	case true:
