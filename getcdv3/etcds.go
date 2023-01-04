@@ -25,6 +25,7 @@ func Update(etcdAddr string) {
 // Etcds
 // <summary>
 type Etcds interface {
+	Len() (c int)
 	Get() (cli Clientv3, e error)
 	Put(cli Clientv3)
 	Close(reset func(Clientv3))
@@ -90,7 +91,11 @@ func (s *etcds_) assertAddr() {
 	}
 }
 
-func (s *etcds_) new(cb func(error, ...any)) (cli any, e error) {
+func (s *etcds_) Len() (c int) {
+	return s.pool.Len()
+}
+
+func (s *etcds_) new(cb func(error, ...any), v ...any) (cli any, e error) {
 	s.assertAddr()
 	c, err := clientv3.New(clientv3.Config{
 		Endpoints:   strings.Split(s.etcdAddr, ","),
@@ -110,7 +115,7 @@ func (s *etcds_) new(cb func(error, ...any)) (cli any, e error) {
 }
 
 func (s *etcds_) Get() (cli Clientv3, e error) {
-	v, err := s.pool.Get()
+	v, err := s.pool.Get(s.etcdAddr)
 	e = err
 	switch err {
 	case nil:

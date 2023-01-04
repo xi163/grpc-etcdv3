@@ -45,6 +45,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-// replace github.com/cwloo/gonet v0.0.0 => /mnt/hgfs/gonet
+replace github.com/cwloo/gonet v0.0.0 => /mnt/hgfs/gonet
 
-replace github.com/cwloo/gonet v0.0.0 => E:\winshare\gonet
+// replace github.com/cwloo/gonet v0.0.0 => E:\winshare\gonet

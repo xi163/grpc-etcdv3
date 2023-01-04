@@ -10,6 +10,10 @@ import (
 	"google.golang.org/grpc"
 )
 
+func Convert(c *grpc.ClientConn) Client {
+	return newClient(newClientConn(nil, c))
+}
+
 // <summary>
 // Clients [host]=RPCs
 // <summary>
@@ -24,10 +28,10 @@ type Clients interface {
 	RemoveByAddr(addr string, port int)
 	Remove(host string) (ok bool)
 	Update(hosts map[string]bool) bool
-	GetConnByAddr(addr string, port int) (c ClientConn, err error)
-	GetConn(host string) (c ClientConn, err error)
-	GetConns(hosts map[string]bool) (conns []ClientConn, slice map[string]bool)
-	AddConn(unique bool, schema, node, host string, dial Dial, c *grpc.ClientConn) (conn ClientConn)
+	GetConnByAddr(addr string, port int) (c Client, err error)
+	GetConn(host string) (c Client, err error)
+	GetConns(hosts map[string]bool) (conns []Client, slice map[string]bool)
+	Convert(unique bool, schema, node, host string, dial Dial, c *grpc.ClientConn) (conn Client)
 }
 
 type clients struct {
@@ -199,12 +203,22 @@ func (s *clients) Update(hosts map[string]bool) bool {
 	})
 }
 
-func (s *clients) GetConnByAddr(addr string, port int) (c ClientConn, err error) {
+func (s *clients) GetConnByAddr(addr string, port int) (c Client, err error) {
 	c, err = s.GetConn(net.JoinHostPort(addr, strconv.Itoa(port)))
 	return
 }
 
-func (s *clients) GetConn(host string) (c ClientConn, err error) {
+func (s *clients) GetConn(host string) (Client, error) {
+	c, err := s.getConn(host)
+	switch err {
+	case nil:
+		return newClient(c), err
+	default:
+		return nil, err
+	}
+}
+
+func (s *clients) getConn(host string) (c ClientConn, err error) {
 	rpc, ok := s.Get(host)
 	switch ok {
 	case true:
@@ -220,7 +234,7 @@ func (s *clients) GetConn(host string) (c ClientConn, err error) {
 	return
 }
 
-func (s *clients) GetConns(hosts map[string]bool) (conns []ClientConn, slice map[string]bool) {
+func (s *clients) GetConns(hosts map[string]bool) (conns []Client, slice map[string]bool) {
 	remove := map[string]bool{}
 	slice = map[string]bool{}
 	s.l.RLock()
@@ -231,7 +245,7 @@ func (s *clients) GetConns(hosts map[string]bool) (conns []ClientConn, slice map
 			c, err := rpc.Get()
 			switch err {
 			case nil:
-				conns = append(conns, c)
+				conns = append(conns, newClient(c))
 			default:
 				remove[host] = true
 			}
@@ -246,12 +260,16 @@ func (s *clients) GetConns(hosts map[string]bool) (conns []ClientConn, slice map
 	return
 }
 
-func (s *clients) AddConn(unique bool, schema, node, host string, dial Dial, c *grpc.ClientConn) (conn ClientConn) {
+func (s *clients) Convert(unique bool, schema, node, host string, dial Dial, c *grpc.ClientConn) (conn Client) {
 	rpc, ok := s.GetAdd(unique, schema, node, host, dial)
 	switch ok {
 	case true:
-		conn = newClientConn(rpc, c)
-		rpc.Put(conn)
+		switch rpc.Len() {
+		case 0:
+			conn = newClient(newClientConn(rpc, c))
+		default:
+			conn = newClient(newClientConn(nil, c))
+		}
 	default:
 		logs.Fatalf("error")
 	}

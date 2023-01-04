@@ -14,7 +14,7 @@ import (
 )
 
 // GetBalanceConn
-func GetBalanceConn(schema, serviceName string) (conn gRPCs.ClientConn, e error) {
+func GetBalanceConn(schema, serviceName string) (conn gRPCs.Client, e error) {
 	target := TargetString(false, schema, serviceName)
 	c, err := BalanceDial(false, schema, serviceName)
 	e = err
@@ -29,13 +29,13 @@ func GetBalanceConn(schema, serviceName string) (conn gRPCs.ClientConn, e error)
 			clients, ok := gRPCs.Conns().GetAdd(target)
 			switch ok {
 			case true:
-				conn = clients.AddConn(false, schema, serviceName, resp.Addr, BalanceDialHost, c)
+				conn = clients.Convert(false, schema, serviceName, resp.Addr, BalanceDialHost, c)
 			default:
 				logs.Fatalf("error")
 			}
 		default:
 			logs.Errorf(e.Error())
-			conn = gRPCs.NewClientConn(c)
+			conn = gRPCs.Convert(c)
 			return
 		}
 	default:
@@ -45,13 +45,13 @@ func GetBalanceConn(schema, serviceName string) (conn gRPCs.ClientConn, e error)
 }
 
 // GetConn
-func GetConn(schema, serviceName, myAddr string, myPort int) (conn gRPCs.ClientConn, err error) {
-	conn, err = GetConnByHost(schema, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
+func GetConn(schema, serviceName, addr string, port int) (conn gRPCs.Client, err error) {
+	conn, err = GetConnByHost(schema, serviceName, net.JoinHostPort(addr, strconv.Itoa(port)))
 	return
 }
 
 // GetConn
-func GetConnByHost(schema, serviceName, host string) (conn gRPCs.ClientConn, err error) {
+func GetConnByHost(schema, serviceName, host string) (conn gRPCs.Client, err error) {
 	target := TargetString(false, schema, serviceName)
 	// gRPCs.Conns().Update(target, map[string]bool{host: true})
 	clients, ok := gRPCs.Conns().GetAdd(target)
@@ -66,7 +66,7 @@ func GetConnByHost(schema, serviceName, host string) (conn gRPCs.ClientConn, err
 }
 
 // GetConns
-func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
+func GetConns(schema, serviceName string) (conns []gRPCs.Client) {
 	target := TargetString(false, schema, serviceName)
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	// etcds.Update(etcdAddr, func(v Clientv3) {
@@ -96,7 +96,7 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 						c, err := DirectDialHost(schema, serviceName, host)
 						switch err {
 						case nil:
-							conn := clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c)
+							conn := clients.Convert(false, schema, serviceName, host, BalanceDialHost, c)
 							conns = append(conns, conn)
 						default:
 							logs.Errorf(err.Error())
@@ -115,7 +115,7 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 							switch i >= 20 {
 							case true:
 								for host, c := range m {
-									conn := clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c)
+									conn := clients.Convert(false, schema, serviceName, host, BalanceDialHost, c)
 									conns = append(conns, conn)
 								}
 								return
@@ -132,7 +132,7 @@ func GetConns(schema, serviceName string) (conns []gRPCs.ClientConn) {
 									switch len(m) == len(hosts) {
 									case true:
 										for host, c := range m {
-											conn := clients.AddConn(false, schema, serviceName, host, BalanceDialHost, c)
+											conn := clients.Convert(false, schema, serviceName, host, BalanceDialHost, c)
 											conns = append(conns, conn)
 										}
 										return

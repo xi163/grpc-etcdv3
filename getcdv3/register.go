@@ -36,13 +36,13 @@ func GetPrefix4Unique(schema, serviceName string) string {
 	return fmt.Sprintf("%s:///%s", schema, serviceName)
 }
 
-func RegisterEtcd(schema, serviceName, myAddr string, myPort int, ttl int) error {
-	err := registerEtcd(schema, serviceName, myAddr, myPort, ttl)
+func RegisterEtcd(schema, serviceName, addr string, port int, ttl int) error {
+	err := registerEtcd(schema, serviceName, addr, port, ttl)
 	if err != nil {
 		return err
 	}
-	serviceName = strings.Join([]string{serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, ":")
-	err = registerEtcd(schema, serviceName, myAddr, myPort, ttl)
+	serviceName = strings.Join([]string{serviceName, net.JoinHostPort(addr, strconv.Itoa(port))}, ":")
+	err = registerEtcd(schema, serviceName, addr, port, ttl)
 	if err != nil {
 		return err
 	}
@@ -53,14 +53,14 @@ func GetTarget(schema, serviceName string) string {
 	return GetPrefix(schema, serviceName)
 }
 
-func GetUniqueTarget(schema, serviceName, myAddr string, myPort int) string {
-	return strings.Join([]string{GetPrefix4Unique(schema, serviceName), ":", net.JoinHostPort(myAddr, strconv.Itoa(myPort)), "/"}, "")
+func GetUniqueTarget(schema, serviceName, addr string, port int) string {
+	return strings.Join([]string{GetPrefix4Unique(schema, serviceName), ":", net.JoinHostPort(addr, strconv.Itoa(port)), "/"}, "")
 }
 
-func registerEtcd(schema, serviceName, myAddr string, myPort int, ttl int) error {
-	serviceValue := net.JoinHostPort(myAddr, strconv.Itoa(myPort))
+func registerEtcd(schema, serviceName, addr string, port int, ttl int) error {
+	serviceValue := net.JoinHostPort(addr, strconv.Itoa(port))
 	serviceKey := GetPrefix(schema, serviceName) + serviceValue
-	args := strings.Join([]string{schema, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort))}, " ")
+	args := strings.Join([]string{schema, serviceName, net.JoinHostPort(addr, strconv.Itoa(port))}, " ")
 	ttl = ttl * 3
 	ctx, _ := context.WithCancel(context.Background())
 	// ctx, _ := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)

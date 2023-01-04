@@ -12,6 +12,7 @@ type Dial func(unique bool, schema, node, host string) (*grpc.ClientConn, error)
 // RPCs
 // <summary>
 type RPCs interface {
+	Len() (c int)
 	Schema() string
 	Node() string
 	Host() string
@@ -61,6 +62,10 @@ func (s *rpcs) assert() {
 	}
 }
 
+func (s *rpcs) Len() (c int) {
+	return s.pool.Len()
+}
+
 func (s *rpcs) Schema() string {
 	return s.schema
 }
@@ -73,7 +78,7 @@ func (s *rpcs) Host() string {
 	return s.host
 }
 
-func (s *rpcs) new(cb func(error, ...any)) (conn any, e error) {
+func (s *rpcs) new(cb func(error, ...any), v ...any) (conn any, e error) {
 	c, err := s.dial(s.unique, s.schema, s.node, s.host)
 	e = err
 	switch err {
@@ -87,7 +92,7 @@ func (s *rpcs) new(cb func(error, ...any)) (conn any, e error) {
 }
 
 func (s *rpcs) Get() (conn ClientConn, e error) {
-	v, err := s.pool.Get()
+	v, err := s.pool.Get(s.schema, s.node, s.host)
 	e = err
 	switch err {
 	case nil:
