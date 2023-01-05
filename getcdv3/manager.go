@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	manager = newManager()
+	builders = newManager()
 )
 
 // <summary>
@@ -27,29 +27,29 @@ type Manager interface {
 }
 
 // <summary>
-// Manager_
+// manager
 // <summary>
-type Manager_ struct {
+type manager struct {
 	m map[string]Builder
 	l *sync.RWMutex
 }
 
 func newManager() Manager {
-	s := &Manager_{
+	s := &manager{
 		m: map[string]Builder{},
 		l: &sync.RWMutex{},
 	}
 	return s
 }
 
-func (s *Manager_) Len() (c int) {
+func (s *manager) Len() (c int) {
 	s.l.RLock()
 	c = len(s.m)
 	s.l.RUnlock()
 	return
 }
 
-func (s *Manager_) Range(cb func(string, Builder)) {
+func (s *manager) Range(cb func(string, Builder)) {
 	s.l.RLock()
 	for schema, b := range s.m {
 		cb(schema, b)
@@ -57,14 +57,14 @@ func (s *Manager_) Range(cb func(string, Builder)) {
 	s.l.RUnlock()
 }
 
-func (s *Manager_) Get(schema string) (b Builder, ok bool) {
+func (s *manager) Get(schema string) (b Builder, ok bool) {
 	s.l.RLock()
 	b, ok = s.m[schema]
 	s.l.RUnlock()
 	return
 }
 
-func (s *Manager_) GetAdd(schema string) (b Builder, ok bool) {
+func (s *manager) GetAdd(schema string) (b Builder, ok bool) {
 	b, ok = s.Get(schema)
 	switch ok {
 	case true:
@@ -74,7 +74,7 @@ func (s *Manager_) GetAdd(schema string) (b Builder, ok bool) {
 	return
 }
 
-func (s *Manager_) getAdd(schema string) (b Builder, ok bool) {
+func (s *manager) getAdd(schema string) (b Builder, ok bool) {
 	s.l.Lock()
 	b, ok = s.m[schema]
 	switch ok {
@@ -89,7 +89,7 @@ func (s *Manager_) getAdd(schema string) (b Builder, ok bool) {
 	return
 }
 
-func (s *Manager_) remove(schema string, cb func(string, Builder)) {
+func (s *manager) remove(schema string, cb func(string, Builder)) {
 	s.l.Lock()
 	b, ok := s.m[schema]
 	switch ok {
@@ -109,7 +109,7 @@ ERR:
 	logs.Fatalf("error %v %v", schema, b.Scheme())
 }
 
-func (s *Manager_) Remove(schema string, cb func(string, Builder)) {
+func (s *manager) Remove(schema string, cb func(string, Builder)) {
 	_, ok := s.Get(schema)
 	switch ok {
 	case true:
@@ -118,7 +118,7 @@ func (s *Manager_) Remove(schema string, cb func(string, Builder)) {
 	}
 }
 
-func (s *Manager_) RangeRemove(cb func(string, Builder)) {
+func (s *manager) RangeRemove(cb func(string, Builder)) {
 	s.l.Lock()
 	for schema, b := range s.m {
 		cb(schema, b)
@@ -128,7 +128,7 @@ func (s *Manager_) RangeRemove(cb func(string, Builder)) {
 	s.l.Unlock()
 }
 
-func (s *Manager_) Close() {
+func (s *manager) Close() {
 	s.RangeRemove(func(_ string, b Builder) {
 		b.Close()
 	})

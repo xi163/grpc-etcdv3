@@ -13,29 +13,29 @@ import (
 )
 
 // BalanceDialAddr
-func BalanceDialAddr(unique bool, schema, serviceName, myAddr string, myPort int) (*grpc.ClientConn, error) {
-	switch myAddr == "" || myPort == 0 {
+func BalanceDialAddr(unique bool, schema, serviceName, addr string, port int) (*grpc.ClientConn, error) {
+	switch addr == "" || port == 0 {
 	case true:
 		return BalanceDial(unique, schema, serviceName)
 	default:
-		return BalanceDialHost(unique, schema, serviceName, net.JoinHostPort(myAddr, strconv.Itoa(myPort)))
+		return BalanceDialHost(unique, schema, serviceName, net.JoinHostPort(addr, strconv.Itoa(port)))
 	}
 }
 
 // BalanceDialHost
-func BalanceDialHost(unique bool, schema, serviceName, myHost string) (*grpc.ClientConn, error) {
-	switch myHost == "" {
+func BalanceDialHost(unique bool, schema, serviceName, host string) (*grpc.ClientConn, error) {
+	switch host == "" {
 	case true:
 		return BalanceDial(unique, schema, serviceName)
 	default:
-		return BalanceDial(unique, schema, strings.Join([]string{serviceName, myHost}, ":"))
+		return BalanceDial(unique, schema, strings.Join([]string{serviceName, host}, ":"))
 	}
 }
 
 // BalanceDial
 func BalanceDial(unique bool, schema, serviceName string) (conn *grpc.ClientConn, err error) {
 	target := TargetString(unique, schema, serviceName)
-	_, ok := manager.GetAdd(schema)
+	_, ok := builders.GetAdd(schema)
 	switch ok {
 	case true:
 		// logs.Debugf("%v", target)
@@ -58,7 +58,7 @@ func BalanceDial(unique bool, schema, serviceName string) (conn *grpc.ClientConn
 }
 
 // DirectDialAddr
-func DirectDialAddr(schema, serviceName, myAddr string, myPort int) (conn *grpc.ClientConn, err error) {
+func DirectDialAddr(schema, serviceName, addr string, port int) (conn *grpc.ClientConn, err error) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(1)*time.Second)
 	opts := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, roundrobin.Name)),
@@ -67,7 +67,7 @@ func DirectDialAddr(schema, serviceName, myAddr string, myPort int) (conn *grpc.
 		grpc.WithBlock(),
 		grpc.WithDisableRetry(),
 	}
-	target := strings.Join([]string{myAddr, strconv.Itoa(myPort)}, ":")
+	target := strings.Join([]string{addr, strconv.Itoa(port)}, ":")
 	// logs.Debugf("%v", target)
 	// conn, err = grpc.Dial(target, opts...)
 	conn, err = grpc.DialContext(ctx, target, opts...)

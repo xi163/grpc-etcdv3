@@ -30,9 +30,9 @@ type Builder interface {
 }
 
 // <summary>
-// Builder_
+// builder
 // <summary>
-type Builder_ struct {
+type builder struct {
 	grpc_resolver.Builder
 	schema string
 	m      map[string]Watcher
@@ -40,21 +40,21 @@ type Builder_ struct {
 }
 
 func newBuilder(schema string) Builder {
-	return &Builder_{
+	return &builder{
 		schema: schema,
 		m:      map[string]Watcher{},
 		l:      &sync.RWMutex{},
 	}
 }
 
-func (s *Builder_) Len() (c int) {
+func (s *builder) Len() (c int) {
 	s.l.RLock()
 	c = len(s.m)
 	s.l.RUnlock()
 	return
 }
 
-func (s *Builder_) Range(cb func(Watcher)) {
+func (s *builder) Range(cb func(Watcher)) {
 	s.l.RLock()
 	for _, w := range s.m {
 		cb(w)
@@ -62,14 +62,14 @@ func (s *Builder_) Range(cb func(Watcher)) {
 	s.l.RUnlock()
 }
 
-func (s *Builder_) Get(host string) (w Watcher, ok bool) {
+func (s *builder) Get(host string) (w Watcher, ok bool) {
 	s.l.RLock()
 	w, ok = s.m[host]
 	s.l.RUnlock()
 	return
 }
 
-func (s *Builder_) GetAdd(host, target string) (w Watcher, ok bool) {
+func (s *builder) GetAdd(host, target string) (w Watcher, ok bool) {
 	w, ok = s.Get(host)
 	switch ok {
 	case true:
@@ -79,7 +79,7 @@ func (s *Builder_) GetAdd(host, target string) (w Watcher, ok bool) {
 	return
 }
 
-func (s *Builder_) getAdd(host, target string) (w Watcher, ok bool) {
+func (s *builder) getAdd(host, target string) (w Watcher, ok bool) {
 	s.l.Lock()
 	w, ok = s.m[host]
 	switch ok {
@@ -93,7 +93,7 @@ func (s *Builder_) getAdd(host, target string) (w Watcher, ok bool) {
 	return
 }
 
-func (s *Builder_) remove(host string, cb func(Watcher)) (c int, w Watcher, ok bool) {
+func (s *builder) remove(host string, cb func(Watcher)) (c int, w Watcher, ok bool) {
 	s.l.Lock()
 	w, ok = s.m[host]
 	switch ok {
@@ -106,7 +106,7 @@ func (s *Builder_) remove(host string, cb func(Watcher)) (c int, w Watcher, ok b
 	return
 }
 
-func (s *Builder_) Remove(host string, cb func(Watcher)) {
+func (s *builder) Remove(host string, cb func(Watcher)) {
 	_, ok := s.Get(host)
 	switch ok {
 	case true:
@@ -122,7 +122,7 @@ func (s *Builder_) Remove(host string, cb func(Watcher)) {
 	}
 }
 
-func (s *Builder_) RangeRemove(cb func(Watcher)) {
+func (s *builder) RangeRemove(cb func(Watcher)) {
 	s.l.Lock()
 	for host, w := range s.m {
 		cb(w)
@@ -154,7 +154,7 @@ func ParseTarget(target grpc_resolver.Target) (schema, serviceName string, uniqu
 }
 
 // Build
-func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.ClientConn, _ grpc_resolver.BuildOptions) (grpc_resolver.Resolver, error) {
+func (s *builder) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.ClientConn, _ grpc_resolver.BuildOptions) (grpc_resolver.Resolver, error) {
 	schema, serviceName, unique := ParseTarget(resolver_target)
 	target := TargetString(unique, schema, serviceName)
 	switch s.schema == schema {
@@ -194,22 +194,22 @@ func (s *Builder_) Build(resolver_target grpc_resolver.Target, cc grpc_resolver.
 }
 
 // Scheme
-func (s *Builder_) Scheme() string {
+func (s *builder) Scheme() string {
 	return s.schema
 }
 
-func (s *Builder_) Close() {
+func (s *builder) Close() {
 	s.RangeRemove(func(w Watcher) {
 		w.Close()
 	})
 	s.reset()
 }
 
-func (s *Builder_) reset() {
+func (s *builder) reset() {
 	switch len(s.m) {
 	case 0:
 	default:
 		logs.Fatalf("error")
 	}
-	manager.Remove(s.schema, func(string, Builder) {})
+	builders.Remove(s.schema, func(string, Builder) {})
 }
