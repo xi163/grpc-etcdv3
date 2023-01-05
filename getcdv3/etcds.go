@@ -74,7 +74,7 @@ func (s *etcds_) Update(etcdAddr string, reset func(Clientv3)) {
 			client.Cancel()
 			reset(*value.(*Clientv3))
 			client.Close()
-			c, err := s.new(cb)
+			c, err := s.new(cb, etcdAddr)
 			e = err
 			switch err {
 			case nil:
