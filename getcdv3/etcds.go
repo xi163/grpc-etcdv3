@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cwloo/gonet/core/base/sys"
 	"github.com/cwloo/gonet/logs"
+	"github.com/cwloo/gonet/utils/pool"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -40,12 +40,12 @@ type etcds_ struct {
 	username string
 	password string
 	etcdAddr string
-	pool     sys.FreeValues
+	pool     pool.Pool
 }
 
 func newEtcds() Etcds {
 	s := &etcds_{}
-	s.pool = *sys.NewFreeValuesWith(s.new)
+	s.pool = *pool.NewPoolWith(s.new)
 	return s
 }
 

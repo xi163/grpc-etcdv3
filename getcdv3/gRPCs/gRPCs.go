@@ -1,8 +1,8 @@
 package gRPCs
 
 import (
-	"github.com/cwloo/gonet/core/base/sys"
 	"github.com/cwloo/gonet/logs"
+	"github.com/cwloo/gonet/utils/pool"
 	"google.golang.org/grpc"
 )
 
@@ -27,7 +27,7 @@ type rpcs struct {
 	node   string
 	host   string
 	dial   Dial
-	pool   sys.FreeValues
+	pool   pool.Pool
 }
 
 func newRPCs(unique bool, schema, node, host string, dial Dial) RPCs {
@@ -38,7 +38,7 @@ func newRPCs(unique bool, schema, node, host string, dial Dial) RPCs {
 		host:   host,
 		dial:   dial,
 	}
-	s.pool = *sys.NewFreeValuesWith(s.new)
+	s.pool = *pool.NewPoolWith(s.new)
 	s.assert()
 	return s
 }
